@@ -9,9 +9,8 @@ License: Apache License 2.0 (see LICENSE file for details)
 
 using namespace System.Collections.Generic
 
-if (-not (Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction SilentlyContinue)) {
-    Set-Variable -Name SANtricity_Config -Scope Script -Value @{}
-}
+$script:SANtricity_Config = [pscustomobject]@{}
+$script:SANtricityTranscriptInfo = $null
 
 # Try to import bundled PowerShellRich for nicer CLI output when available
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
@@ -53,10 +52,9 @@ function Start-SANtricityTranscript {
         [switch] $IncludeInvocationHeader
     )
 
-    $existing = Get-Variable -Name SANtricityTranscriptInfo -Scope Script -ErrorAction SilentlyContinue
-    if ($existing -and $existing.Value.Active) {
-        Write-Verbose "Transcript already active at $($existing.Value.Path)"
-        return [PSCustomObject]$existing.Value
+    if ($script:SANtricityTranscriptInfo -and $script:SANtricityTranscriptInfo.Active) {
+        Write-Verbose "Transcript already active at $($script:SANtricityTranscriptInfo.Path)"
+        return [PSCustomObject]$script:SANtricityTranscriptInfo
     }
 
     if (-not $Path) {
@@ -81,7 +79,7 @@ function Start-SANtricityTranscript {
     Start-Transcript @startParams | Out-Null
 
     $info = [ordered]@{ Active = $true ; Path = $Path ; Started = Get-Date }
-    Set-Variable -Name SANtricityTranscriptInfo -Scope Script -Value $info
+    $script:SANtricityTranscriptInfo = $info
     return [PSCustomObject]$info
 }
 
@@ -93,15 +91,14 @@ function Stop-SANtricityTranscript {
     [CmdletBinding()]
     param()
 
-    $existing = Get-Variable -Name SANtricityTranscriptInfo -Scope Script -ErrorAction SilentlyContinue
-    if (-not $existing -or -not $existing.Value.Active) {
+    if (-not $script:SANtricityTranscriptInfo -or -not $script:SANtricityTranscriptInfo.Active) {
         Write-Verbose 'No SANtricity transcript is currently active.'
         return $false
     }
 
     try {
         Stop-Transcript | Out-Null
-        Remove-Variable -Name SANtricityTranscriptInfo -Scope Script -ErrorAction SilentlyContinue
+        $script:SANtricityTranscriptInfo = $null
         return $true
     } catch {
         Write-Warning "Failed to stop transcript: $($_.Exception.Message)"
@@ -221,7 +218,15 @@ function Connect-SANtricity {
         $VerifySsl = $true
     }
 
-    Set-Variable -Name SANtricity_Config -Scope Script -Value @{ BaseUrls = $baseUrls ; Headers = $headers ; VerifySsl = $VerifySsl ; ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') ; AuthBasicPath = $AuthBasicPath.Trim('/') ; StorageSystemId = $StorageSystemId ; IdCase = $IdCase }
+    $script:SANtricity_Config = [pscustomobject]@{
+        BaseUrls        = $baseUrls
+        Headers         = $headers
+        VerifySsl       = $VerifySsl
+        ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/')
+        AuthBasicPath   = $AuthBasicPath.Trim('/')
+        StorageSystemId = $StorageSystemId
+        IdCase          = $IdCase
+    }
 
     Write-Verbose "SANtricity_Config set: BaseUrls=$($baseUrls -join ',') StorageSystemId=$StorageSystemId"
 
@@ -256,8 +261,8 @@ function Connect-SANtricity {
         try {
             $resolvedId = Get-SANtricitySystemId
             if ($resolvedId) { $summary.StorageSystemId = $resolvedId }
-            $cfgLatest = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Value
-            if ($cfgLatest -and $cfgLatest.ContainsKey('LastSuccessfulBaseUrl') -and $cfgLatest.LastSuccessfulBaseUrl) {
+            $cfgLatest = $script:SANtricity_Config
+            if ($cfgLatest -and ($cfgLatest.PSObject.Properties.Name -contains 'LastSuccessfulBaseUrl') -and $cfgLatest.LastSuccessfulBaseUrl) {
                 $summary.ActiveBaseUrl = $cfgLatest.LastSuccessfulBaseUrl
             }
             $summary.Validated = $true
@@ -287,8 +292,8 @@ function Normalize-SANtricityId {
     param([Parameter(Mandatory=$true)][string] $Id)
 
     if (-not $Id) { return $Id }
-    $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Value
-    if (-not $cfg -or -not $cfg.ContainsKey('IdCase')) { return $Id }
+    $cfg = $script:SANtricity_Config
+    if (-not $cfg -or -not ($cfg.PSObject.Properties.Name -contains 'IdCase')) { return $Id }
     switch ($cfg.IdCase) {
         'upper' { return $Id.ToUpperInvariant() }
         'lower' { return $Id.ToLowerInvariant() }
@@ -315,14 +320,14 @@ function Invoke-SANtricityRequest {
         [bool] $UseSystemScope = $true
     )
 
-    $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction Stop | Select-Object -ExpandProperty Value
+    $cfg = $script:SANtricity_Config
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
 
     $apiBasePath = $cfg.ApiBasePathPrefix
     if ([string]::IsNullOrWhiteSpace($apiBasePath)) {
         $apiBasePath = 'devmgr/v2'
         $cfg.ApiBasePathPrefix = $apiBasePath
-        Set-Variable -Name SANtricity_Config -Scope Script -Value $cfg
+        $script:SANtricity_Config = $cfg
     } else {
         $apiBasePath = $apiBasePath.Trim('/')
     }
@@ -361,7 +366,7 @@ function Invoke-SANtricityRequest {
             if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
             $result = Invoke-RestMethod @invokeArgs
             $cfg.LastSuccessfulBaseUrl = $base
-            Set-Variable -Name SANtricity_Config -Scope Script -Value $cfg
+            $script:SANtricity_Config = $cfg
             return $result
         } catch {
             $lastException = $_
@@ -390,7 +395,7 @@ function Get-SANtricitySystemId {
     #>
     param()
 
-    $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction Stop | Select-Object -ExpandProperty Value
+    $cfg = $script:SANtricity_Config
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
     if ($cfg.StorageSystemId -and $cfg.StorageSystemId -ne '1') {
         return $cfg.StorageSystemId
@@ -401,7 +406,7 @@ function Get-SANtricitySystemId {
     if ($discovered) {
         # persist discovered id
         $cfg.StorageSystemId = $discovered
-        Set-Variable -Name SANtricity_Config -Scope Script -Value $cfg
+        $script:SANtricity_Config = $cfg
         return $discovered
     }
     return $cfg.StorageSystemId
