@@ -15,15 +15,69 @@ if (Test-Path $richModulePath) {
     Import-Module $richModulePath -Force -ErrorAction SilentlyContinue
 }
 
+# Dot-source public helpers (keep core Connect/Invoke in this root file)
+$publicPath = Join-Path $scriptDir 'Public/MappingReport.psm1'
+if (Test-Path $publicPath) { . $publicPath }
+
 function Connect-SANtricity {
+    <#
+    .SYNOPSIS
+    Create a connection configuration for SANtricity controllers.
+
+    .DESCRIPTION
+    Stores connection information (one or more controller base URLs, auth headers,
+    API base path and storage system id) in the script-scoped `SANtricity_Config` variable.
+
+    .PARAMETER BaseUrl
+    One or more controller base URLs (string or string[]). Example: 'https://10.0.0.1:8443'
+
+    .PARAMETER Username
+    Username for Basic auth.
+
+    .PARAMETER Password
+    Password for Basic auth.
+
+    .PARAMETER Token
+    JWT token for Bearer auth.
+
+    .PARAMETER Auth
+    Authentication mode: 'Basic' or 'Jwt'.
+
+    .PARAMETER VerifySsl
+    Whether to verify TLS certificates.
+
+    .PARAMETER ApiBasePathPrefix
+    API base path prefix (default 'devmgr/v2'). Use full API prefix; system scope will
+    be added as '/storage-systems/{id}/' when needed.
+
+    .PARAMETER AuthBasicPath
+    Path used for auth basic endpoints (default 'devmgr/utils').
+
+    .PARAMETER StorageSystemId
+    Storage system id to use in API paths (default '1').
+
+    .PARAMETER IdCase
+    Identifier normalization mode: 'none' (default), 'upper', or 'lower'. When set,
+    IDs returned from the array and those provided by the user will be normalized
+    using this setting to improve matching.
+
+    .EXAMPLE
+    Connect-SANtricity -BaseUrl 'https://10.113.1.158:8443' -Username admin -Password admin -IdCase upper
+
+    Connect-SANtricity -BaseUrl @('https://c1:8443','https://c2:8443') -Username admin -Password admin -IdCase lower
+    #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [string] $BaseUrl,
+        [Parameter(Mandatory = $true)] [Alias('BaseUrls')] [object] $BaseUrl,
         [string] $Username,
         [string] $Password,
         [string] $Token,
         [ValidateSet('Basic','Jwt')] [string] $Auth = 'Basic',
-        [bool] $VerifySsl = $true
+        [bool] $VerifySsl = $true,
+        [string] $ApiBasePathPrefix = 'devmgr/v2',
+        [string] $AuthBasicPath = 'devmgr/utils',
+        [string] $StorageSystemId = '1',
+        [ValidateSet('none','upper','lower')] [string] $IdCase = 'none'
     )
 
     $headers = @{}
@@ -34,28 +88,151 @@ function Connect-SANtricity {
         $headers['Authorization'] = "Basic $pair"
     }
 
-    Set-Variable -Name SANtricity_Config -Scope Script -Value @{ BaseUrl = $BaseUrl.TrimEnd('/') ; Headers = $headers ; VerifySsl = $VerifySsl }
+    # normalize BaseUrl into an array of trimmed strings
+    $baseUrls = @()
+    if ($null -ne $BaseUrl) {
+        if ($BaseUrl -is [System.Array]) {
+            foreach ($u in $BaseUrl) { $baseUrls += $u.TrimEnd('/') }
+        } else {
+            $baseUrls = ,($BaseUrl.ToString().TrimEnd('/'))
+        }
+    }
+
+    Set-Variable -Name SANtricity_Config -Scope Script -Value @{ BaseUrls = $baseUrls ; Headers = $headers ; VerifySsl = $VerifySsl ; ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') ; AuthBasicPath = $AuthBasicPath.Trim('/') ; StorageSystemId = $StorageSystemId ; IdCase = $IdCase }
     return $true
 }
 
+function Normalize-SANtricityId {
+    <#
+    .SYNOPSIS
+    Normalize hex-like identifiers according to configured casing.
+
+    .PARAMETER Id
+    Identifier string to normalize.
+
+    .DESCRIPTION
+    Applies casing normalization (upper/lower) when configured; returns original string
+    when `none` is selected.
+    #>
+    param([Parameter(Mandatory=$true)][string] $Id)
+
+    if (-not $Id) { return $Id }
+    $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Value
+    if (-not $cfg -or -not $cfg.ContainsKey('IdCase')) { return $Id }
+    switch ($cfg.IdCase) {
+        'upper' { return $Id.ToUpperInvariant() }
+        'lower' { return $Id.ToLowerInvariant() }
+        default { return $Id }
+    }
+}
+
 function Invoke-SANtricityRequest {
+    <#
+    .SYNOPSIS
+    Invoke an HTTP request against SANtricity controllers with failover.
+
+    .PARAMETER Method
+    HTTP method (GET, POST, PUT, DELETE).
+
+    .PARAMETER Path
+    Relative resource path. If it begins with '/', it is appended to the ApiBasePathPrefix/StorageSystemId
+    (e.g. '/volumes' -> /devmgr/v2/storage-systems/{id}/volumes). If it contains 'login' or does not start
+    with '/', the AuthBasicPath is used (e.g. 'login' -> /devmgr/utils/login).
+    #>
     param(
         [Parameter(Mandatory = $true)] [string] $Method,
-        [Parameter(Mandatory = $true)] [string] $Path
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [bool] $UseSystemScope = $true
     )
 
     $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction Stop | Select-Object -ExpandProperty Value
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
-    $url = if ($Path.StartsWith('http')) { $Path } else { "$($cfg.BaseUrl)/$($Path.TrimStart('/'))" }
 
-    $invokeArgs = @{ Uri = $url ; Method = $Method ; Headers = $cfg.Headers ; ErrorAction = 'Stop' }
-    if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
+    $lastException = $null
+    foreach ($base in $cfg.BaseUrls) {
+        try {
+            if ($Path.StartsWith('http')) {
+                $url = $Path
+            } elseif ($Path.StartsWith('/')) {
+                # decide whether to include storage system id in API path
+                if ($UseSystemScope) {
+                    $systemId = Get-SANtricitySystemId
+                    $url = "${base}/${($cfg.ApiBasePathPrefix)}/storage-systems/${systemId}/${($Path.TrimStart('/'))}"
+                } else {
+                    $url = "${base}/${($cfg.ApiBasePathPrefix)}/${($Path.TrimStart('/'))}"
+                }
+            } elseif ($Path -match 'login' -or $Path.StartsWith($cfg.AuthBasicPath)) {
+                $p = $Path.TrimStart('/')
+                $url = "${base}/${($cfg.AuthBasicPath)}/$p"
+            } else {
+                # default to API path
+                $systemId = Get-SANtricitySystemId
+                $url = "${base}/${($cfg.ApiBasePathPrefix)}/storage-systems/${systemId}/${($Path.TrimStart('/'))}"
+            }
 
-    try {
-        return Invoke-RestMethod @invokeArgs
-    } catch {
-        throw "Request failed: $($_.Exception.Message)"
+            $invokeArgs = @{ Uri = $url ; Method = $Method ; Headers = $cfg.Headers ; ErrorAction = 'Stop' }
+            if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
+
+            return Invoke-RestMethod @invokeArgs
+        } catch {
+            $lastException = $_
+            # try next base URL if available
+            continue
+        }
     }
+
+    if ($lastException) { throw "Request failed: $($lastException.Exception.Message)" }
+}
+
+function Get-SANtricitySystemId {
+    <#
+    .SYNOPSIS
+    Return the configured storage system id (placeholder).
+
+    .DESCRIPTION
+    Currently returns the configured `StorageSystemId` from the connection config; in future
+    this can query the controller to discover the actual system id/WWN.
+    #>
+    param()
+
+    $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction Stop | Select-Object -ExpandProperty Value
+    if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
+    if ($cfg.StorageSystemId -and $cfg.StorageSystemId -ne '1') {
+        return $cfg.StorageSystemId
+    }
+
+    # attempt discovery if StorageSystemId is default/placeholder
+    $discovered = Discover-SANtricitySystemId
+    if ($discovered) {
+        # persist discovered id
+        $cfg.StorageSystemId = $discovered
+        Set-Variable -Name SANtricity_Config -Scope Script -Value $cfg
+        return $discovered
+    }
+    return $cfg.StorageSystemId
+}
+
+function Discover-SANtricitySystemId {
+    <#
+    .SYNOPSIS
+    Discover the storage-system id/WWN by querying the controller's /storage-systems endpoint.
+    #>
+    param()
+
+    $payload = Invoke-SANtricityRequest -Method 'GET' -Path '/storage-systems' -UseSystemScope:$false
+    if ($payload -is [System.Collections.IEnumerable]) {
+        foreach ($item in $payload) {
+            if ($item -is [System.Collections.IDictionary]) {
+                $candidate = $null
+                if ($item.Contains('wwn')) { $candidate = $item['wwn'] }
+                if (-not $candidate -and $item.Contains('id')) { $candidate = $item['id'] }
+                if ($candidate -and [string]::IsNullOrWhiteSpace($candidate) -eq $false) {
+                    return $candidate.Trim()
+                }
+            }
+        }
+    }
+    return $null
 }
 
 function Get-SANtricityVolumes {
