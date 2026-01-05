@@ -38,5 +38,5 @@ jobs:
           if (-not (Get-Module -ListAvailable -Name Pester)) {
             Install-Module -Name Pester -Force -Scope CurrentUser -SkipPublisherCheck
           }
-          Import-Module ./santricity.psm1 -Force
+          Import-Module ./santricity/santricity.psd1 -Force
           Invoke-Pester -Script Tests -Passthru

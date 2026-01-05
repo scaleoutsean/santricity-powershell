@@ -14,7 +14,8 @@ $script:SANtricityTranscriptInfo = $null
 
 # Try to import bundled PowerShellRich for nicer CLI output when available
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
-$richModulePath = Join-Path $scriptDir 'PowerShellRich/PowerShellRich.psd1'
+$repoRoot = Split-Path -Path $scriptDir -Parent
+$richModulePath = Join-Path $repoRoot 'PowerShellRich/PowerShellRich.psd1'
 if (Test-Path $richModulePath) {
     Import-Module $richModulePath -Force -ErrorAction SilentlyContinue
 }
@@ -218,12 +219,18 @@ function Connect-SANtricity {
         $VerifySsl = $true
     }
 
+    if ([string]::IsNullOrWhiteSpace($ApiBasePathPrefix)) { $ApiBasePathPrefix = 'devmgr/v2' }
+    else { $ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') }
+
+    if ([string]::IsNullOrWhiteSpace($AuthBasicPath)) { $AuthBasicPath = 'devmgr/utils' }
+    else { $AuthBasicPath = $AuthBasicPath.Trim('/') }
+
     $script:SANtricity_Config = [pscustomobject]@{
         BaseUrls        = $baseUrls
         Headers         = $headers
         VerifySsl       = $VerifySsl
-        ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/')
-        AuthBasicPath   = $AuthBasicPath.Trim('/')
+        ApiBasePathPrefix = $ApiBasePathPrefix
+        AuthBasicPath   = $AuthBasicPath
         StorageSystemId = $StorageSystemId
         IdCase          = $IdCase
     }
@@ -237,8 +244,8 @@ function Connect-SANtricity {
         AuthMode        = $Auth
         VerifySsl       = [bool]$VerifySsl
         IdCase          = $IdCase
-        ApiBasePath     = $ApiBasePathPrefix.Trim('/')
-        AuthBasicPath   = $AuthBasicPath.Trim('/')
+        ApiBasePath     = $ApiBasePathPrefix
+        AuthBasicPath   = $AuthBasicPath
         Validated       = $false
         TranscriptActive = $false
         TranscriptPath   = $null
@@ -322,6 +329,9 @@ function Invoke-SANtricityRequest {
 
     $cfg = $script:SANtricity_Config
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
+    if (-not $cfg.BaseUrls -or $cfg.BaseUrls.Count -eq 0) {
+        throw 'No controller BaseUrl has been configured. Call Connect-SANtricity first.'
+    }
 
     $apiBasePath = $cfg.ApiBasePathPrefix
     if ([string]::IsNullOrWhiteSpace($apiBasePath)) {
@@ -330,6 +340,15 @@ function Invoke-SANtricityRequest {
         $script:SANtricity_Config = $cfg
     } else {
         $apiBasePath = $apiBasePath.Trim('/')
+    }
+
+    $authBasicPath = $cfg.AuthBasicPath
+    if ([string]::IsNullOrWhiteSpace($authBasicPath)) {
+        $authBasicPath = 'devmgr/utils'
+        $cfg.AuthBasicPath = $authBasicPath
+        $script:SANtricity_Config = $cfg
+    } else {
+        $authBasicPath = $authBasicPath.Trim('/')
     }
 
     $lastException = $null
@@ -352,9 +371,9 @@ function Invoke-SANtricityRequest {
                 } else {
                     $url = "${base}/${apiBasePath}/${($trimmedPath.TrimStart('/'))}"
                 }
-            } elseif ($trimmedPath -match 'login' -or $trimmedPath.StartsWith($cfg.AuthBasicPath)) {
+            } elseif ($trimmedPath -match 'login' -or $trimmedPath.StartsWith($authBasicPath)) {
                 $p = $trimmedPath.TrimStart('/')
-                $url = "${base}/${($cfg.AuthBasicPath)}/$p"
+                $url = "${base}/${authBasicPath}/$p"
             } else {
                 # default to API path
                 $systemId = Get-SANtricitySystemId
@@ -362,9 +381,11 @@ function Invoke-SANtricityRequest {
             }
 
             $lastAttemptedUrl = $url
+            Write-Verbose ("WebRequest: {0} {1}" -f $Method.ToUpperInvariant(), $url)
             $invokeArgs = @{ Uri = $url ; Method = $Method ; Headers = $cfg.Headers ; ErrorAction = 'Stop' }
             if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
             $result = Invoke-RestMethod @invokeArgs
+            Write-Verbose ("WebResponse: {0} {1}" -f $Method.ToUpperInvariant(), $url)
             $cfg.LastSuccessfulBaseUrl = $base
             $script:SANtricity_Config = $cfg
             return $result
