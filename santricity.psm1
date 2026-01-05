@@ -1,5 +1,9 @@
+#!/usr/bin/env pwsh
+# -*- coding: utf-8 -*-
 <#
 Simple SANtricity PowerShell helpers for PowerShell 7.
+Copyright: 2026 scaleoutSean (github.com/scaleoutsean)
+License: Apache License 2.0 (see LICENSE file for details)
 #>
 
 using namespace System.Collections.Generic
@@ -331,11 +335,26 @@ function Get-SANtricityMappingsReport {
     [CmdletBinding()]
     param()
 
-    $vols = @(Get-SANtricityVolumes)
-    $pools = @(Get-SANtricityStoragePools)
-    $hosts = @(Get-SANtricityHosts)
-    $groups = @(Get-SANtricityHostGroups)
-    $mappings = @(Get-SANtricityVolumeMappings)
+    $fetch = {
+        param(
+            [string] $description,
+            [string] $path,
+            [scriptblock] $operation
+        )
+
+        try {
+            return @(& $operation)
+        } catch {
+            $msg = "Get-SANtricityMappingsReport failed while retrieving $description ($path). $($_.Exception.Message)"
+            throw $msg
+        }
+    }
+
+    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolumes }
+    $pools = & $fetch 'storage pools' '/storage-pools' { Get-SANtricityStoragePools }
+    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHosts }
+    $groups = & $fetch 'host groups' '/host-groups' { Get-SANtricityHostGroups }
+    $mappings = & $fetch 'volume mappings' '/volume-mappings' { Get-SANtricityVolumeMappings }
 
     # build lookups mapping multiple id keys to objects
     $volById = [Dictionary[string,object]]::new()
