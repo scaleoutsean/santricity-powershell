@@ -318,27 +318,42 @@ function Invoke-SANtricityRequest {
     $cfg = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction Stop | Select-Object -ExpandProperty Value
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
 
+    $apiBasePath = $cfg.ApiBasePathPrefix
+    if ([string]::IsNullOrWhiteSpace($apiBasePath)) {
+        $apiBasePath = 'devmgr/v2'
+        $cfg.ApiBasePathPrefix = $apiBasePath
+        Set-Variable -Name SANtricity_Config -Scope Script -Value $cfg
+    } else {
+        $apiBasePath = $apiBasePath.Trim('/')
+    }
+
     $lastException = $null
     $lastAttemptedUrl = $null
     foreach ($base in $cfg.BaseUrls) {
         try {
-            if ($Path.StartsWith('http')) {
+            $trimmedPath = if ($null -ne $Path) { $Path.Trim() } else { '' }
+
+            if ([string]::IsNullOrWhiteSpace($trimmedPath)) {
+                throw 'Request path was empty.'
+            }
+
+            if ($trimmedPath.StartsWith('http')) {
                 $url = $Path
-            } elseif ($Path.StartsWith('/')) {
+            } elseif ($trimmedPath.StartsWith('/')) {
                 # decide whether to include storage system id in API path
                 if ($UseSystemScope) {
                     $systemId = Get-SANtricitySystemId
-                    $url = "${base}/${($cfg.ApiBasePathPrefix)}/storage-systems/${systemId}/${($Path.TrimStart('/'))}"
+                    $url = "${base}/${apiBasePath}/storage-systems/${systemId}/${($trimmedPath.TrimStart('/'))}"
                 } else {
-                    $url = "${base}/${($cfg.ApiBasePathPrefix)}/${($Path.TrimStart('/'))}"
+                    $url = "${base}/${apiBasePath}/${($trimmedPath.TrimStart('/'))}"
                 }
-            } elseif ($Path -match 'login' -or $Path.StartsWith($cfg.AuthBasicPath)) {
-                $p = $Path.TrimStart('/')
+            } elseif ($trimmedPath -match 'login' -or $trimmedPath.StartsWith($cfg.AuthBasicPath)) {
+                $p = $trimmedPath.TrimStart('/')
                 $url = "${base}/${($cfg.AuthBasicPath)}/$p"
             } else {
                 # default to API path
                 $systemId = Get-SANtricitySystemId
-                $url = "${base}/${($cfg.ApiBasePathPrefix)}/storage-systems/${systemId}/${($Path.TrimStart('/'))}"
+                $url = "${base}/${apiBasePath}/storage-systems/${systemId}/${($trimmedPath.TrimStart('/'))}"
             }
 
             $lastAttemptedUrl = $url
