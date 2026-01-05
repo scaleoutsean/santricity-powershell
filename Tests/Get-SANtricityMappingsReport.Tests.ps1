@@ -1,10 +1,13 @@
 Describe 'santricity module basic' {
     BeforeAll {
-        Import-Module (Join-Path $PSScriptRoot '..\santricity.psm1') -Force
+        $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'santricity.psd1'
+        Import-Module $modulePath -Force
     }
 
-    It 'Connect-SANtricity returns true for valid args' {
+    It 'Connect-SANtricity returns summary object for valid args' {
         $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'user' -Password 'pass' -VerifySsl:$true
-        $res | Should -Be $true
+        $res.BaseUrls | Should -Contain 'https://example.com'
+        $res.Validated | Should -BeFalse
+        $res.StorageSystemId | Should -Be '1'
     }
 }

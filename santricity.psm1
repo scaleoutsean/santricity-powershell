@@ -6,6 +6,7 @@ Copyright: 2026 scaleoutSean (github.com/scaleoutsean)
 License: Apache License 2.0 (see LICENSE file for details)
 #>
 
+
 using namespace System.Collections.Generic
 
 if (-not (Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction SilentlyContinue)) {
@@ -21,7 +22,92 @@ if (Test-Path $richModulePath) {
 
 # Dot-source public helpers (keep core Connect/Invoke in this root file)
 $publicPath = Join-Path $scriptDir 'Public/MappingReport.psm1'
-if (Test-Path $publicPath) { . $publicPath }
+$publicModule = $null
+try {
+    if (Test-Path -LiteralPath $publicPath) {
+        $publicModule = Get-Item -LiteralPath $publicPath -ErrorAction Stop
+    }
+} catch {
+    Write-Warning ("Unable to resolve public helper module at {0}: {1}" -f $publicPath,$_.Exception.Message)
+}
+if ($publicModule) { . "$($publicModule.FullName)" }
+
+function Start-SANtricityTranscript {
+    <#
+    .SYNOPSIS
+    Start a transcript for troubleshooting SANtricity CLI usage.
+
+    .PARAMETER Path
+    Optional path for the transcript file. Defaults to the current directory with a timestamped filename.
+
+    .PARAMETER Append
+    Append to the file if it already exists (default: true).
+
+    .PARAMETER IncludeInvocationHeader
+    Include invocation headers in the transcript (default: true).
+    #>
+    [CmdletBinding()]
+    param(
+        [string] $Path,
+        [switch] $Append,
+        [switch] $IncludeInvocationHeader
+    )
+
+    $existing = Get-Variable -Name SANtricityTranscriptInfo -Scope Script -ErrorAction SilentlyContinue
+    if ($existing -and $existing.Value.Active) {
+        Write-Verbose "Transcript already active at $($existing.Value.Path)"
+        return [PSCustomObject]$existing.Value
+    }
+
+    if (-not $Path) {
+        $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+        $Path = Join-Path -Path (Get-Location).Path -ChildPath "santricity_client_${timestamp}.log"
+    } elseif (-not [System.IO.Path]::IsPathRooted($Path)) {
+        $Path = Join-Path -Path (Get-Location).Path -ChildPath $Path
+    }
+
+    $Path = [System.IO.Path]::GetFullPath($Path)
+    $directory = Split-Path -Parent $Path
+    if ($directory -and -not (Test-Path -LiteralPath $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $startParams = @{ LiteralPath = $Path }
+    if ($Append.IsPresent) { $startParams['Append'] = $true } else { $startParams['Append'] = $true }
+    if ($IncludeInvocationHeader.IsPresent -or -not $PSBoundParameters.ContainsKey('IncludeInvocationHeader')) {
+        $startParams['IncludeInvocationHeader'] = $true
+    }
+
+    Start-Transcript @startParams | Out-Null
+
+    $info = [ordered]@{ Active = $true ; Path = $Path ; Started = Get-Date }
+    Set-Variable -Name SANtricityTranscriptInfo -Scope Script -Value $info
+    return [PSCustomObject]$info
+}
+
+function Stop-SANtricityTranscript {
+    <#
+    .SYNOPSIS
+    Stop an active SANtricity transcript if one is running.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $existing = Get-Variable -Name SANtricityTranscriptInfo -Scope Script -ErrorAction SilentlyContinue
+    if (-not $existing -or -not $existing.Value.Active) {
+        Write-Verbose 'No SANtricity transcript is currently active.'
+        return $false
+    }
+
+    try {
+        Stop-Transcript | Out-Null
+        Remove-Variable -Name SANtricityTranscriptInfo -Scope Script -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        Write-Warning "Failed to stop transcript: $($_.Exception.Message)"
+        return $false
+    }
+}
 
 function Connect-SANtricity {
     <#
@@ -65,6 +151,17 @@ function Connect-SANtricity {
     IDs returned from the array and those provided by the user will be normalized
     using this setting to improve matching.
 
+    .PARAMETER CreateTranscript
+    Start a PowerShell transcript for troubleshooting. WARNING: transcripts capture
+    everything typed, including credentials; use only in secure environments.
+
+    .PARAMETER TranscriptPath
+    Optional custom path for the transcript file when -CreateTranscript is used.
+
+    .PARAMETER ValidateConnection
+    When specified, performs a quick request against the controller to confirm it is
+    reachable and attempt to discover the storage-system id immediately.
+
     .EXAMPLE
     Connect-SANtricity -BaseUrl 'https://10.113.1.158:8443' -Username admin -Password admin -IdCase upper
 
@@ -81,14 +178,18 @@ function Connect-SANtricity {
         [string] $ApiBasePathPrefix = 'devmgr/v2',
         [string] $AuthBasicPath = 'devmgr/utils',
         [string] $StorageSystemId = '1',
-        [ValidateSet('none','upper','lower')] [string] $IdCase = 'none'
+        [ValidateSet('none','upper','lower')] [string] $IdCase = 'none',
+        [switch] $CreateTranscript,
+        [string] $TranscriptPath,
+        [switch] $ValidateConnection
     )
 
     $headers = @{}
     if ($Auth -eq 'Jwt' -and $Token) {
         $headers['Authorization'] = "Bearer $Token"
     } elseif ($Auth -eq 'Basic' -and $Username -and $Password) {
-        $pair = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$Username`:$Password"))
+        $basicRaw = "{0}:{1}" -f $Username,$Password
+        $pair = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($basicRaw))
         $headers['Authorization'] = "Basic $pair"
     }
 
@@ -123,8 +224,52 @@ function Connect-SANtricity {
     Set-Variable -Name SANtricity_Config -Scope Script -Value @{ BaseUrls = $baseUrls ; Headers = $headers ; VerifySsl = $VerifySsl ; ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') ; AuthBasicPath = $AuthBasicPath.Trim('/') ; StorageSystemId = $StorageSystemId ; IdCase = $IdCase }
 
     Write-Verbose "SANtricity_Config set: BaseUrls=$($baseUrls -join ',') StorageSystemId=$StorageSystemId"
-    Write-Host "Connected to SANtricity controller(s): $($baseUrls -join ',') (StorageSystemId: $StorageSystemId)"
-    return $true
+
+    $summary = [ordered]@{
+        BaseUrls        = $baseUrls
+        ActiveBaseUrl   = if ($baseUrls.Count -gt 0) { $baseUrls[0] } else { $null }
+        StorageSystemId = $StorageSystemId
+        AuthMode        = $Auth
+        VerifySsl       = [bool]$VerifySsl
+        IdCase          = $IdCase
+        ApiBasePath     = $ApiBasePathPrefix.Trim('/')
+        AuthBasicPath   = $AuthBasicPath.Trim('/')
+        Validated       = $false
+        TranscriptActive = $false
+        TranscriptPath   = $null
+    }
+
+    if ($CreateTranscript) {
+        try {
+            $transcriptInfo = Start-SANtricityTranscript -Path $TranscriptPath -Append -IncludeInvocationHeader
+            if ($transcriptInfo) {
+                $summary.TranscriptActive = $true
+                $summary.TranscriptPath = $transcriptInfo.Path
+                Write-Warning "Transcript logging is enabled. Remove or secure $($transcriptInfo.Path) after troubleshooting."
+            }
+        } catch {
+            Write-Warning "Failed to start transcript: $($_.Exception.Message)"
+        }
+    }
+
+    if ($ValidateConnection) {
+        try {
+            $resolvedId = Get-SANtricitySystemId
+            if ($resolvedId) { $summary.StorageSystemId = $resolvedId }
+            $cfgLatest = Get-Variable -Name SANtricity_Config -Scope Script -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Value
+            if ($cfgLatest -and $cfgLatest.ContainsKey('LastSuccessfulBaseUrl') -and $cfgLatest.LastSuccessfulBaseUrl) {
+                $summary.ActiveBaseUrl = $cfgLatest.LastSuccessfulBaseUrl
+            }
+            $summary.Validated = $true
+            Write-Verbose "Validated SANtricity controller via $($summary.ActiveBaseUrl)"
+        } catch {
+            $summary.ValidationError = $_.Exception.Message
+            Write-Warning "Validation attempt failed: $($_.Exception.Message)"
+        }
+    }
+
+    Write-Host "SANtricity config ready for $($summary.ActiveBaseUrl) (StorageSystemId: $($summary.StorageSystemId))"
+    return [PSCustomObject]$summary
 }
 
 function Normalize-SANtricityId {
@@ -199,7 +344,10 @@ function Invoke-SANtricityRequest {
             $lastAttemptedUrl = $url
             $invokeArgs = @{ Uri = $url ; Method = $Method ; Headers = $cfg.Headers ; ErrorAction = 'Stop' }
             if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
-            return Invoke-RestMethod @invokeArgs
+            $result = Invoke-RestMethod @invokeArgs
+            $cfg.LastSuccessfulBaseUrl = $base
+            Set-Variable -Name SANtricity_Config -Scope Script -Value $cfg
+            return $result
         } catch {
             $lastException = $_
             Write-Verbose "Request attempt failed: $lastAttemptedUrl -> $($_.Exception.Message)"
@@ -210,7 +358,9 @@ function Invoke-SANtricityRequest {
     if ($lastException) {
         $baseCount = $cfg.BaseUrls.Count
         $msg = "Request failed after trying $baseCount base URL(s). Last attempted: $lastAttemptedUrl. Error: $($lastException.Exception.Message)"
-        throw $msg
+        $errorRecord = New-Object System.Management.Automation.ErrorRecord ($lastException.Exception, 'SANtricityRequestFailed', [System.Management.Automation.ErrorCategory]::InvalidOperation, $lastAttemptedUrl)
+        $errorRecord.ErrorDetails = New-Object System.Management.Automation.ErrorDetails($msg)
+        throw $errorRecord
     }
 }
 

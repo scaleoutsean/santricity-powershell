@@ -14,4 +14,16 @@ Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Passw
 Get-SANtricityMappingsReport
 ```
 
+### Run tests inside Docker
+
+If your host PowerShell setup is unreliable, you can run the test suite inside the
+official .NET SDK 9.0 container:
+
+```bash
+docker compose run --rm powershell-tests
+```
+
+The first run installs PowerShell inside the container, then executes
+`./scripts/run-tests.sh` against the workspace mounted at `/workspace`.
+
 
