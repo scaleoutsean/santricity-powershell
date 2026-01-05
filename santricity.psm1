@@ -73,7 +73,7 @@ function Connect-SANtricity {
         [string] $Password,
         [string] $Token,
         [ValidateSet('Basic','Jwt')] [string] $Auth = 'Basic',
-        [bool] $VerifySsl = $true,
+        [object] $VerifySsl = $true,
         [string] $ApiBasePathPrefix = 'devmgr/v2',
         [string] $AuthBasicPath = 'devmgr/utils',
         [string] $StorageSystemId = '1',
@@ -98,7 +98,28 @@ function Connect-SANtricity {
         }
     }
 
+    # Normalize VerifySsl to a boolean even if user passed a string like 'false' or '0'
+    try {
+        if ($VerifySsl -is [string]) {
+            switch ($VerifySsl.ToLowerInvariant()) {
+                'true' { $VerifySsl = $true }
+                'false' { $VerifySsl = $false }
+                '1' { $VerifySsl = $true }
+                '0' { $VerifySsl = $false }
+                default { $VerifySsl = [bool]::Parse($VerifySsl) }
+            }
+        } else {
+            $VerifySsl = [bool]$VerifySsl
+        }
+    } catch {
+        # fallback to true when conversion fails
+        $VerifySsl = $true
+    }
+
     Set-Variable -Name SANtricity_Config -Scope Script -Value @{ BaseUrls = $baseUrls ; Headers = $headers ; VerifySsl = $VerifySsl ; ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') ; AuthBasicPath = $AuthBasicPath.Trim('/') ; StorageSystemId = $StorageSystemId ; IdCase = $IdCase }
+
+    Write-Verbose "SANtricity_Config set: BaseUrls=$($baseUrls -join ',') StorageSystemId=$StorageSystemId"
+    Write-Host "Connected to SANtricity controller(s): $($baseUrls -join ',') (StorageSystemId: $StorageSystemId)"
     return $true
 }
 
@@ -149,6 +170,7 @@ function Invoke-SANtricityRequest {
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
 
     $lastException = $null
+    $lastAttemptedUrl = $null
     foreach ($base in $cfg.BaseUrls) {
         try {
             if ($Path.StartsWith('http')) {
@@ -170,18 +192,22 @@ function Invoke-SANtricityRequest {
                 $url = "${base}/${($cfg.ApiBasePathPrefix)}/storage-systems/${systemId}/${($Path.TrimStart('/'))}"
             }
 
+            $lastAttemptedUrl = $url
             $invokeArgs = @{ Uri = $url ; Method = $Method ; Headers = $cfg.Headers ; ErrorAction = 'Stop' }
             if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
-
             return Invoke-RestMethod @invokeArgs
         } catch {
             $lastException = $_
+            Write-Verbose "Request attempt failed: $lastAttemptedUrl -> $($_.Exception.Message)"
             # try next base URL if available
             continue
         }
     }
-
-    if ($lastException) { throw "Request failed: $($lastException.Exception.Message)" }
+    if ($lastException) {
+        $baseCount = $cfg.BaseUrls.Count
+        $msg = "Request failed after trying $baseCount base URL(s). Last attempted: $lastAttemptedUrl. Error: $($lastException.Exception.Message)"
+        throw $msg
+    }
 }
 
 function Get-SANtricitySystemId {
@@ -236,26 +262,72 @@ function Discover-SANtricitySystemId {
 }
 
 function Get-SANtricityVolumes {
+    <#
+    .SYNOPSIS
+    Retrieve volumes from the SANtricity API.
+
+    .DESCRIPTION
+    Calls the controller's volumes endpoint and returns the volume objects.
+    #>
     return Invoke-SANtricityRequest -Method 'GET' -Path '/volumes'
 }
 
 function Get-SANtricityStoragePools {
+    <#
+    .SYNOPSIS
+    Retrieve storage pools from the SANtricity API.
+
+    .DESCRIPTION
+    Calls the controller's storage-pools endpoint and returns pool objects.
+    #>
     return Invoke-SANtricityRequest -Method 'GET' -Path '/storage-pools'
 }
 
 function Get-SANtricityHosts {
+    <#
+    .SYNOPSIS
+    Retrieve host definitions from the SANtricity API.
+
+    .DESCRIPTION
+    Calls the controller's hosts endpoint and returns host objects.
+    #>
     return Invoke-SANtricityRequest -Method 'GET' -Path '/hosts'
 }
 
 function Get-SANtricityHostGroups {
+    <#
+    .SYNOPSIS
+    Retrieve host-groups from the SANtricity API.
+
+    .DESCRIPTION
+    Calls the controller's host-groups endpoint and returns host-group objects.
+    #>
     return Invoke-SANtricityRequest -Method 'GET' -Path '/host-groups'
 }
 
 function Get-SANtricityVolumeMappings {
+    <#
+    .SYNOPSIS
+    Retrieve volume mappings from the SANtricity API.
+
+    .DESCRIPTION
+    Calls the controller's volume-mappings endpoint and returns mapping objects.
+    #>
     return Invoke-SANtricityRequest -Method 'GET' -Path '/volume-mappings'
 }
 
 function Get-SANtricityMappingsReport {
+    <#
+    .SYNOPSIS
+    Build a consolidated mappings report.
+
+    .DESCRIPTION
+    Aggregates volumes, pools, hosts, host-groups and volume mappings to produce a
+    report suitable for display or further processing.
+
+    .EXAMPLE
+    Get-SANtricityMappingsReport | Format-Table -AutoSize
+    #>
     [CmdletBinding()]
     param()
 
@@ -339,6 +411,18 @@ function Show-SANtricityMappingsReportFormatted {
     param()
 
     $report = Get-SANtricityMappingsReport
+    <#
+    .SYNOPSIS
+    Display a formatted mappings report in the console.
+
+    .DESCRIPTION
+    Uses the optional PowerShellRich module to render a rich table when available,
+    otherwise falls back to `Format-Table`.
+
+    .EXAMPLE
+    Show-SANtricityMappingsReportFormatted
+    #>
+
     if (-not $report -or $report.Count -eq 0) {
         if (Get-Module -Name PowerShellRich -ListAvailable -ErrorAction SilentlyContinue) {
             Write-Rich "No mappings found."
