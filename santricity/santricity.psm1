@@ -314,17 +314,33 @@ function Invoke-SANtricityRequest {
     Invoke an HTTP request against SANtricity controllers with failover.
 
     .PARAMETER Method
-    HTTP method (GET, POST, PUT, DELETE).
+    HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD).
 
     .PARAMETER Path
     Relative resource path. If it begins with '/', it is appended to the ApiBasePathPrefix/StorageSystemId
     (e.g. '/volumes' -> /devmgr/v2/storage-systems/{id}/volumes). If it contains 'login' or does not start
     with '/', the AuthBasicPath is used (e.g. 'login' -> /devmgr/utils/login).
+
+    .PARAMETER Body
+    Optional payload. Non-string values are converted to JSON automatically.
+
+    .PARAMETER ContentType
+    Content-Type header when a body is present (default 'application/json').
+
+    .PARAMETER AdditionalHeaders
+    Optional per-call headers merged with the connection headers.
+
+    .PARAMETER RawResponse
+    Return the raw response string instead of attempting JSON conversion.
     #>
     param(
         [Parameter(Mandatory = $true)] [string] $Method,
         [Parameter(Mandatory = $true)] [string] $Path,
-        [bool] $UseSystemScope = $true
+        [bool] $UseSystemScope = $true,
+        [object] $Body,
+        [string] $ContentType = 'application/json',
+        [hashtable] $AdditionalHeaders,
+        [switch] $RawResponse
     )
 
     $cfg = $script:SANtricity_Config
@@ -351,9 +367,28 @@ function Invoke-SANtricityRequest {
         $authBasicPath = $authBasicPath.Trim('/')
     }
 
+    $methodUpper = $Method.ToUpperInvariant()
+    $httpMethod = switch ($methodUpper) {
+        'GET' { [System.Net.Http.HttpMethod]::Get }
+        'POST' { [System.Net.Http.HttpMethod]::Post }
+        'PUT' { [System.Net.Http.HttpMethod]::Put }
+        'DELETE' { [System.Net.Http.HttpMethod]::Delete }
+        'PATCH' { [System.Net.Http.HttpMethod]::new('PATCH') }
+        'HEAD' { [System.Net.Http.HttpMethod]::Head }
+        default { throw "Unsupported HTTP method '$Method'." }
+    }
+
+    if ($PSBoundParameters.ContainsKey('Body') -and $methodUpper -in @('GET','HEAD')) {
+        throw "HTTP method '$Method' cannot include a body."
+    }
+
     $lastException = $null
     $lastAttemptedUrl = $null
     foreach ($base in $cfg.BaseUrls) {
+        $handler = $null
+        $client = $null
+        $request = $null
+        $response = $null
         try {
             $trimmedPath = if ($null -ne $Path) { $Path.Trim() } else { '' }
 
@@ -361,39 +396,117 @@ function Invoke-SANtricityRequest {
                 throw 'Request path was empty.'
             }
 
-            if ($trimmedPath.StartsWith('http')) {
-                $url = $Path
+            $baseUriValue = if ($base.EndsWith('/')) { $base } else { "$base/" }
+            $baseUri = [System.Uri]::new($baseUriValue, [System.UriKind]::Absolute)
+            Write-Verbose "Base URI: $baseUriValue | Trimmed path: $trimmedPath | UseSystemScope: $UseSystemScope"
+
+            if ($trimmedPath.StartsWith('http',[System.StringComparison]::OrdinalIgnoreCase)) {
+                $url = $trimmedPath
+                Write-Verbose "Using absolute URL from Path: $url"
             } elseif ($trimmedPath.StartsWith('/')) {
-                # decide whether to include storage system id in API path
                 if ($UseSystemScope) {
                     $systemId = Get-SANtricitySystemId
-                    $url = "${base}/${apiBasePath}/storage-systems/${systemId}/${($trimmedPath.TrimStart('/'))}"
+                    if ([string]::IsNullOrWhiteSpace($systemId)) {
+                        throw "StorageSystemId is empty; cannot construct system-scoped path. Call Connect-SANtricity with -StorageSystemId."
+                    }
+                    $systemId = $systemId.Trim('/')
+                    $pathSegment = $trimmedPath.TrimStart('/')
+                    $relative = "${apiBasePath}/storage-systems/${systemId}/${pathSegment}"
+                    Write-Verbose "System-scoped path: apiBasePath=$apiBasePath, systemId=$systemId, segment=$pathSegment -> $relative"
                 } else {
-                    $url = "${base}/${apiBasePath}/${($trimmedPath.TrimStart('/'))}"
+                    $pathSegment = $trimmedPath.TrimStart('/')
+                    $relative = "${apiBasePath}/${pathSegment}"
+                    Write-Verbose "Non-system-scoped path: apiBasePath=$apiBasePath, segment=$pathSegment -> $relative"
                 }
-            } elseif ($trimmedPath -match 'login' -or $trimmedPath.StartsWith($authBasicPath)) {
-                $p = $trimmedPath.TrimStart('/')
-                $url = "${base}/${authBasicPath}/$p"
+                $url = [System.Uri]::new($baseUri, $relative.TrimStart('/')).AbsoluteUri
+            } elseif ($trimmedPath -match 'login' -or $trimmedPath.StartsWith($authBasicPath,[System.StringComparison]::OrdinalIgnoreCase)) {
+                $pathSegment = $trimmedPath.TrimStart('/')
+                $relative = "${authBasicPath}/${pathSegment}"
+                Write-Verbose "Auth path: authBasicPath=$authBasicPath, segment=$pathSegment -> $relative"
+                $url = [System.Uri]::new($baseUri, $relative.TrimStart('/')).AbsoluteUri
             } else {
-                # default to API path
                 $systemId = Get-SANtricitySystemId
-                $url = "${base}/${apiBasePath}/storage-systems/${systemId}/${($trimmedPath.TrimStart('/'))}"
+                if ([string]::IsNullOrWhiteSpace($systemId)) {
+                    throw "StorageSystemId is empty; cannot construct default system-scoped path. Call Connect-SANtricity with -StorageSystemId."
+                }
+                $systemId = $systemId.Trim('/')
+                $pathSegment = $trimmedPath.TrimStart('/')
+                $relative = "${apiBasePath}/storage-systems/${systemId}/${pathSegment}"
+                Write-Verbose "Default system-scoped path: apiBasePath=$apiBasePath, systemId=$systemId, segment=$pathSegment -> $relative"
+                $url = [System.Uri]::new($baseUri, $relative.TrimStart('/')).AbsoluteUri
             }
 
             $lastAttemptedUrl = $url
-            Write-Verbose ("WebRequest: {0} {1}" -f $Method.ToUpperInvariant(), $url)
-            $invokeArgs = @{ Uri = $url ; Method = $Method ; Headers = $cfg.Headers ; ErrorAction = 'Stop' }
-            if (-not $cfg.VerifySsl) { $invokeArgs['SkipCertificateCheck'] = $true }
-            $result = Invoke-RestMethod @invokeArgs
-            Write-Verbose ("WebResponse: {0} {1}" -f $Method.ToUpperInvariant(), $url)
+            Write-Verbose ("WebRequest: {0} {1}" -f $methodUpper, $url)
+
+            $handler = [System.Net.Http.HttpClientHandler]::new()
+            if (-not $cfg.VerifySsl) {
+                $handler.ServerCertificateCustomValidationCallback = { $true }
+            }
+
+            $client = [System.Net.Http.HttpClient]::new($handler)
+            $client.Timeout = [System.TimeSpan]::FromSeconds(90)
+
+            $request = [System.Net.Http.HttpRequestMessage]::new($httpMethod, $url)
+            foreach ($key in $cfg.Headers.Keys) {
+                if ($cfg.Headers[$key]) { $null = $request.Headers.TryAddWithoutValidation($key, $cfg.Headers[$key]) }
+            }
+            if ($AdditionalHeaders) {
+                foreach ($key in $AdditionalHeaders.Keys) {
+                    if ($AdditionalHeaders[$key]) { $null = $request.Headers.TryAddWithoutValidation($key, $AdditionalHeaders[$key]) }
+                }
+            }
+
+            if ($PSBoundParameters.ContainsKey('Body')) {
+                $bodyPayload = $Body
+                if ($null -ne $bodyPayload -and -not ($bodyPayload -is [string]) -and -not ($bodyPayload -is [byte[]])) {
+                    $bodyPayload = $bodyPayload | ConvertTo-Json -Depth 32
+                }
+
+                if ($bodyPayload -is [byte[]]) {
+                    $content = [System.Net.Http.ByteArrayContent]::new($bodyPayload)
+                    if ($ContentType) {
+                        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($ContentType)
+                    }
+                } else {
+                    $encoding = [System.Text.Encoding]::UTF8
+                    $useContentType = if ($ContentType) { $ContentType } else { 'application/json' }
+                    $content = [System.Net.Http.StringContent]::new([string]$bodyPayload, $encoding, $useContentType)
+                }
+                $request.Content = $content
+            }
+
+            $response = $client.SendAsync($request).GetAwaiter().GetResult()
+            $raw = if ($response.Content) { $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() } else { $null }
+
+            if (-not $response.IsSuccessStatusCode) {
+                $statusMsg = "{0} ({1})" -f [int]$response.StatusCode, $response.ReasonPhrase
+                $errorText = "Response status code does not indicate success: $statusMsg"
+                if ($raw) { $errorText = "$errorText. Body: $raw" }
+                throw [System.Net.Http.HttpRequestException]::new($errorText)
+            }
+
+            Write-Verbose ("WebResponse: {0} {1}" -f $methodUpper, $url)
             $cfg.LastSuccessfulBaseUrl = $base
             $script:SANtricity_Config = $cfg
-            return $result
+
+            if ($RawResponse) { return $raw }
+            if ([string]::IsNullOrWhiteSpace($raw)) { return $true }
+
+            try {
+                return $raw | ConvertFrom-Json -Depth 64
+            } catch {
+                return $raw
+            }
         } catch {
             $lastException = $_
             Write-Verbose "Request attempt failed: $lastAttemptedUrl -> $($_.Exception.Message)"
-            # try next base URL if available
             continue
+        } finally {
+            if ($response) { $response.Dispose() }
+            if ($request) { $request.Dispose() }
+            if ($client) { $client.Dispose() }
+            if ($handler) { $handler.Dispose() }
         }
     }
     if ($lastException) {
@@ -419,7 +532,12 @@ function Get-SANtricitySystemId {
     $cfg = $script:SANtricity_Config
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
     if ($cfg.StorageSystemId -and $cfg.StorageSystemId -ne '1') {
-        return $cfg.StorageSystemId
+        $id = [string]$cfg.StorageSystemId
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            throw 'Configured StorageSystemId is empty or whitespace. Call Connect-SANtricity with a valid -StorageSystemId.'
+        }
+        Write-Verbose "Using configured StorageSystemId: $id"
+        return $id
     }
 
     # attempt discovery if StorageSystemId is default/placeholder
@@ -428,9 +546,15 @@ function Get-SANtricitySystemId {
         # persist discovered id
         $cfg.StorageSystemId = $discovered
         $script:SANtricity_Config = $cfg
+        Write-Verbose "Discovered and cached StorageSystemId: $discovered"
         return $discovered
     }
-    return $cfg.StorageSystemId
+    $fallback = if ($cfg.StorageSystemId) { [string]$cfg.StorageSystemId } else { '1' }
+    if ([string]::IsNullOrWhiteSpace($fallback)) {
+        throw 'Unable to determine StorageSystemId. Call Connect-SANtricity with -StorageSystemId or ensure the controller is reachable.'
+    }
+    Write-Verbose "Using fallback StorageSystemId: $fallback"
+    return $fallback
 }
 
 function Discover-SANtricitySystemId {
