@@ -187,18 +187,30 @@ function Connect-SANtricity {
         [switch] $ValidateConnection
     )
 
+    if ([string]::IsNullOrWhiteSpace($ApiBasePathPrefix)) { $ApiBasePathPrefix = 'devmgr/v2' }
+    else { $ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') }
+
+    if ([string]::IsNullOrWhiteSpace($AuthBasicPath)) { $AuthBasicPath = 'devmgr/utils' }
+    else { $AuthBasicPath = $AuthBasicPath.Trim('/') }
+
     # Session-based authentication (like curl but with persistent session)
     $webSession = $null
+    $lastLoginError = $null
     if ($Username -and $Password) {
         # Login to get session cookie
+        Write-Verbose "Attempting session-based login with user: $Username"
         foreach ($base in $baseUrls) {
             try {
                 $loginUrl = "$base/$AuthBasicPath/login"
+                Write-Verbose "Login URL: $loginUrl"
+                
                 $loginBody = @{
                     userId = $Username
                     password = $Password
                     xsrfProtected = $false
                 } | ConvertTo-Json
+                
+                Write-Verbose "Login body: $loginBody"
                 
                 $loginHeaders = @{
                     'Accept' = 'application/json'
@@ -215,24 +227,37 @@ function Connect-SANtricity {
                 
                 if ($VerifySsl -eq $false) {
                     $loginParams['SkipCertificateCheck'] = $true
+                    Write-Verbose "Skipping certificate check for login"
                 }
                 
-                Write-Verbose "Logging in to: $loginUrl"
-                $null = Invoke-RestMethod @loginParams
-                Write-Verbose "Login successful, session captured"
+                Write-Verbose "Sending login request..."
+                $loginResponse = Invoke-RestMethod @loginParams
+                Write-Verbose "Login successful! Session captured."
                 break
             } catch {
-                Write-Verbose "Login failed at $base : $($_.Exception.Message)"
+                $lastLoginError = $_
+                Write-Warning "Login failed at ${base}: $($_.Exception.Message)"
+                if ($_.ErrorDetails.Message) {
+                    Write-Warning "Error details: $($_.ErrorDetails.Message)"
+                }
                 continue
             }
         }
         
         if (-not $webSession) {
-            throw "Failed to establish session with any configured controller. Check credentials and connectivity."
+            $errMsg = "Failed to establish session with any configured controller."
+            if ($lastLoginError) {
+                $errMsg += " Last error: $($lastLoginError.Exception.Message)"
+            }
+            throw $errMsg
         }
     } elseif ($Auth -eq 'Jwt' -and $Token) {
         # JWT token support (session not needed)
         $headers = @{ 'Authorization' = "Bearer $Token" }
+        Write-Verbose "Using JWT token authentication"
+    } else {
+        throw "Either Username/Password or Token must be provided"
+    }
     } else {
         throw "Either Username/Password or Token must be provided"
     }
