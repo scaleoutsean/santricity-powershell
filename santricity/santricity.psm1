@@ -8,6 +8,7 @@ License: Apache License 2.0 (see LICENSE file for details)
 
 
 using namespace System.Collections.Generic
+using namespace System.Security.Cryptography.X509Certificates
 
 $script:SANtricity_Config = [pscustomobject]@{}
 $script:SANtricityTranscriptInfo = $null
@@ -97,6 +98,75 @@ function Stop-SANtricityTranscript {
     }
 }
 
+function Get-SANtricityTrustedCertificateInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not [System.IO.File]::Exists($fullPath)) {
+        throw "Trusted certificate file not found: $fullPath"
+    }
+
+    $rawBytes = [System.IO.File]::ReadAllBytes($fullPath)
+    $textSample = [System.Text.Encoding]::ASCII.GetString($rawBytes)
+    $certs = [List[X509Certificate2]]::new()
+
+    if ($textSample -match '-----BEGIN CERTIFICATE-----') {
+        $pattern = '-----BEGIN CERTIFICATE-----\s*(?<body>.*?)\s*-----END CERTIFICATE-----'
+        $matches = [regex]::Matches($textSample, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        foreach ($match in $matches) {
+            $body = ($match.Groups['body'].Value -replace '\s+', '')
+            if ([string]::IsNullOrWhiteSpace($body)) { continue }
+            $certBytes = [Convert]::FromBase64String($body)
+            $certs.Add([X509Certificate2]::new($certBytes))
+        }
+    } else {
+        $certs.Add([X509Certificate2]::new($rawBytes))
+    }
+
+    if ($certs.Count -eq 0) {
+        throw "No certificates were found in $fullPath"
+    }
+
+    $leafThumbprints = [List[string]]::new()
+    $rootThumbprints = [List[string]]::new()
+    $rootCerts = [List[X509Certificate2]]::new()
+    $intermediates = [List[X509Certificate2]]::new()
+
+    foreach ($cert in $certs) {
+        $isCa = $false
+        foreach ($ext in $cert.Extensions) {
+            $basic = $ext -as X509BasicConstraintsExtension
+            if ($basic -and $basic.CertificateAuthority) {
+                $isCa = $true
+                break
+            }
+        }
+
+        if ($isCa) {
+            $rootThumbprints.Add($cert.Thumbprint)
+            if ($cert.Subject -eq $cert.Issuer) {
+                $rootCerts.Add($cert)
+            } else {
+                $intermediates.Add($cert)
+            }
+        } else {
+            $leafThumbprints.Add($cert.Thumbprint)
+        }
+    }
+
+    return [pscustomobject]@{
+        Path = $fullPath
+        RootCertificates = $rootCerts.ToArray()
+        IntermediateCertificates = $intermediates.ToArray()
+        LeafThumbprints = $leafThumbprints.ToArray()
+        RootThumbprints = $rootThumbprints.ToArray()
+    }
+}
+
 function Connect-SANtricity {
     <#
     .SYNOPSIS
@@ -127,9 +197,10 @@ function Connect-SANtricity {
     instead to properly trust the controller's certificate.
 
     .PARAMETER TrustedCertificate
-    Path to a .pem or .cer file containing the SANtricity controller's certificate or CA chain.
-    When provided, this certificate will be trusted for TLS connections. Use this instead of
-    -VerifySsl:$false for production deployments. Requires -UseLegacyHttpClient.
+    Path to a .pem or .cer file containing the SANtricity controller certificate or a custom CA chain.
+    When provided, those certificates will be trusted for TLS connections through the legacy HttpClient
+    pipeline. The module automatically enables the legacy pipeline when this parameter is used so you
+    can avoid -VerifySsl:$false in production.
 
     .PARAMETER ApiBasePathPrefix
     API base path prefix (default 'devmgr/v2'). Use full API prefix; system scope will
@@ -206,6 +277,8 @@ function Connect-SANtricity {
             $baseUrls = ,($BaseUrl.ToString().TrimEnd('/'))
         }
     }
+
+    $trustedCertInfo = $null
 
     # Session-based authentication (like curl but with persistent session)
     $webSession = $null
@@ -285,12 +358,16 @@ function Connect-SANtricity {
     }
 
     if ($TrustedCertificate) {
-        if (-not $UseLegacyHttpClient) {
-            throw "-TrustedCertificate currently requires -UseLegacyHttpClient."
-        }
-        if (-not [System.IO.File]::Exists($TrustedCertificate)) {
+        $resolvedCertPath = [System.IO.Path]::GetFullPath($TrustedCertificate)
+        if (-not [System.IO.File]::Exists($resolvedCertPath)) {
             throw "Trusted certificate file not found: $TrustedCertificate"
         }
+        if (-not $UseLegacyHttpClient) {
+            Write-Verbose "-TrustedCertificate specified; enabling legacy HttpClient pipeline for certificate pinning."
+            $UseLegacyHttpClient = $true
+        }
+        $trustedCertInfo = Get-SANtricityTrustedCertificateInfo -Path $resolvedCertPath
+        $TrustedCertificate = $resolvedCertPath
     }
 
     # Normalize VerifySsl to a boolean even if user passed a string like 'false' or '0'
@@ -323,6 +400,7 @@ function Connect-SANtricity {
         Headers         = if ($Auth -eq 'Jwt') { $headers } else { @{} }
         VerifySsl       = $VerifySsl
         TrustedCertificate = $TrustedCertificate
+        TrustedCertificateInfo = $trustedCertInfo
         UseLegacyHttpClient = [bool]$UseLegacyHttpClient
         ApiBasePathPrefix = $ApiBasePathPrefix
         AuthBasicPath   = $AuthBasicPath
@@ -610,26 +688,58 @@ function Invoke-SANtricityRequest {
                     return $true
                 }
                 $handler.ServerCertificateCustomValidationCallback = $callback
-            } elseif ($cfg.TrustedCertificate) {
-                Write-Verbose "Legacy mode: loading trusted certificate from $($cfg.TrustedCertificate)"
-                try {
-                    $certBytes = [System.IO.File]::ReadAllBytes($cfg.TrustedCertificate)
-                    $trustedCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes)
-                    $trustedThumbprint = $trustedCert.Thumbprint
-                    $trustedSubject = $trustedCert.Subject
-                    Write-Verbose "Trusted certificate loaded: Subject=$trustedSubject | Thumbprint=$trustedThumbprint"
+            } elseif ($cfg.TrustedCertificateInfo) {
+                $trustInfo = $cfg.TrustedCertificateInfo
+                Write-Verbose "Legacy mode: enforcing trusted certificates from $($trustInfo.Path)"
+                $trustedLeafThumbprints = @($trustInfo.LeafThumbprints)
+                $trustedRootThumbprints = @($trustInfo.RootThumbprints)
+                $trustedRoots = @($trustInfo.RootCertificates)
+                $trustedIntermediates = @($trustInfo.IntermediateCertificates)
 
-                    $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
-                        param($request, $cert, $chain, $errors)
-                        if ($null -eq $cert) { return $false }
-                        if ($errors -eq [System.Net.Security.SslPolicyErrors]::None -and $cert.Thumbprint -eq $trustedThumbprint) { return $true }
-                        if ($cert.Thumbprint -eq $trustedThumbprint) { return $true }
-                        return $false
+                $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
+                    param($request, $cert, $chain, $errors)
+                    if ($null -eq $cert) { return $false }
+
+                    if ($trustedLeafThumbprints -and ($trustedLeafThumbprints -contains $cert.Thumbprint)) {
+                        return $true
                     }
-                    $handler.ServerCertificateCustomValidationCallback = $callback
-                } catch {
-                    throw "Failed to load trusted certificate file $($cfg.TrustedCertificate): $($_.Exception.Message)"
+
+                    if ($chain -and $trustedRootThumbprints -and $chain.ChainElements.Count -gt 0) {
+                        $chainRoot = $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate
+                        if ($trustedRootThumbprints -contains $chainRoot.Thumbprint) {
+                            return $true
+                        }
+                    }
+
+                    if (($trustedRoots.Count -gt 0) -or ($trustedIntermediates.Count -gt 0)) {
+                        $customChain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+                        try {
+                            $policy = $customChain.ChainPolicy
+                            $policy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+                            $policy.RevocationFlag = [System.Security.Cryptography.X509Certificates.X509RevocationFlag]::EntireChain
+                            foreach ($extra in $trustedIntermediates) { $null = $policy.ExtraStore.Add($extra) }
+
+                            $policyProps = $policy.PSObject.Properties.Name
+                            $hasCustomStore = $policyProps -contains 'CustomTrustStore'
+                            $hasTrustMode = $policyProps -contains 'TrustMode'
+
+                            if ($hasCustomStore -and $hasTrustMode -and $trustedRoots.Count -gt 0) {
+                                foreach ($root in $trustedRoots) { $null = $policy.CustomTrustStore.Add($root) }
+                                $policy.TrustMode = [System.Security.Cryptography.X509Certificates.X509ChainTrustMode]::CustomRootTrust
+                            } else {
+                                foreach ($root in $trustedRoots) { $null = $policy.ExtraStore.Add($root) }
+                                $policy.VerificationFlags = [System.Security.Cryptography.X509Certificates.X509VerificationFlags]::AllowUnknownCertificateAuthority
+                            }
+
+                            if ($customChain.Build($cert)) { return $true }
+                        } finally {
+                            $customChain.Dispose()
+                        }
+                    }
+
+                    return $false
                 }
+                $handler.ServerCertificateCustomValidationCallback = $callback
             } else {
                 Write-Verbose "Legacy mode: using system trust store for TLS validation"
             }
