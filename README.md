@@ -11,7 +11,12 @@ Import-Module ./santricity/santricity.psd1 -Force
 # Optional rich tables (bundled for convenience)
 Import-Module ./PowerShellRich/PowerShellRich.psd1 -ErrorAction SilentlyContinue
 
+# For testing/lab (skips certificate validation):
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -VerifySsl:$false -Verbose
+
+# For production (trust the controller's certificate):
+$conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-cert.pem' -Verbose
+
 Get-SANtricityVolumes -Verbose
 Get-SANtricityMappingsReport | Format-Table -AutoSize
 ```
