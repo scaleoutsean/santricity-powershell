@@ -980,27 +980,76 @@ function Get-SANtricityMappingsReport {
     $groups = & $fetch 'host groups' '/host-groups' { Get-SANtricityHostGroups }
     $mappings = & $fetch 'volume mappings' '/volume-mappings' { Get-SANtricityVolumeMappings }
 
-    # build lookups mapping multiple id keys to objects
+    $registerKey = {
+        param(
+            [Dictionary[string,object]] $dict,
+            [object] $value,
+            [object] $payload
+        )
+
+        if ($null -eq $value) { return }
+        $text = [string]$value
+        if ([string]::IsNullOrWhiteSpace($text)) { return }
+        $key = Normalize-SANtricityId -Id $text
+        if (-not $key) { $key = $text }
+        $dict[$key] = $payload
+    }
+
+    $resolveLookup = {
+        param(
+            [Dictionary[string,object]] $dict,
+            [object] $value
+        )
+
+        if (-not $dict -or $dict.Count -eq 0 -or $null -eq $value) { return $null }
+        $text = [string]$value
+        if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+        $key = Normalize-SANtricityId -Id $text
+        if (-not $key) { $key = $text }
+        if ($dict.ContainsKey($key)) { return $dict[$key] }
+        return $null
+    }
+
+    $firstPresent = {
+        param([object[]] $values)
+        foreach ($value in $values) {
+            if ($null -eq $value) { continue }
+            if ($value -is [string]) {
+                if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+                continue
+            }
+            return $value
+        }
+        return $null
+    }
+
+    # build lookups mapping multiple id keys to objects (ids normalized via Normalize-SANtricityId)
     $volById = [Dictionary[string,object]]::new()
     foreach ($v in $vols) {
-        foreach ($k in @('volumeRef','id','mappableObjectId')) {
-            if ($v.$k) { $volById[[string]$v.$k] = $v }
+        foreach ($candidate in @($v.volumeRef,$v.id,$v.mappableObjectId,$v.mappableObjectRef,$v.mappableObject)) {
+            & $registerKey $volById $candidate $v
         }
     }
 
     $poolById = [Dictionary[string,object]]::new()
     foreach ($p in $pools) {
-        foreach ($k in @('id','volumeGroupRef','volumeGroupId')) { if ($p.$k) { $poolById[[string]$p.$k] = $p } }
+        foreach ($candidate in @($p.id,$p.volumeGroupRef,$p.volumeGroupId,$p.storagePoolId,$p.poolId)) {
+            & $registerKey $poolById $candidate $p
+        }
     }
 
     $hostByRef = [Dictionary[string,object]]::new()
     foreach ($h in $hosts) {
-        foreach ($k in @('hostRef','id','clusterRef')) { if ($h.$k) { $hostByRef[[string]$h.$k] = $h } }
+        foreach ($candidate in @($h.hostRef,$h.id,$h.clusterRef)) {
+            & $registerKey $hostByRef $candidate $h
+        }
     }
 
     $groupByCluster = [Dictionary[string,object]]::new()
     foreach ($g in $groups) {
-        foreach ($k in @('clusterRef','id')) { if ($g.$k) { $groupByCluster[[string]$g.$k] = $g } }
+        foreach ($candidate in @($g.clusterRef,$g.id)) {
+            & $registerKey $groupByCluster $candidate $g
+        }
     }
 
     $out = @()
@@ -1008,42 +1057,85 @@ function Get-SANtricityMappingsReport {
         $row = [ordered]@{}
         foreach ($prop in $m.PSObject.Properties) { $row[$prop.Name] = $prop.Value }
 
-        $vid = $m.volumeRef -or $m.mappableObjectId -or $m.mappableObjectRef
-        if ($vid -and $volById.ContainsKey([string]$vid)) {
-            $vol = $volById[[string]$vid]
-            $row['mappableObjectName'] = $vol.name -or $vol.label
-            foreach ($cap in @('capacity','reportedSize','currentVolumeSize')) { if ($vol.$cap) { $row['capacity'] = $vol.$cap ; break } }
-            $poolId = $vol.volumeGroupRef -or $vol.poolId -or $vol.storagePoolId
-            if ($poolId -and $poolById.ContainsKey([string]$poolId)) {
-                $pool = $poolById[[string]$poolId]
-                $row['poolName'] = $pool.label -or $pool.name
-                if ($pool.freeSpace) { $row['poolFreeSpace'] = $pool.freeSpace }
-                if ($pool.raidLevel) { $row['raidLevel'] = $pool.raidLevel }
+        $volume = $null
+        foreach ($vid in @($m.volumeRef,$m.mappableObjectId,$m.mappableObjectRef,$m.mappableObject)) {
+            $volume = & $resolveLookup $volById $vid
+            if ($volume) { break }
+        }
+
+        if ($volume) {
+            $volName = & $firstPresent @($volume.name,$volume.label,$volume.volumeName,$volume.mappableObjectName,$volume.mappableObjectLabel)
+            if ($volName) { $row['mappableObjectName'] = $volName }
+
+            $capacityValue = & $firstPresent @($volume.capacity,$volume.reportedSize,$volume.currentVolumeSize,$volume.totalSizeInBytes)
+            if ($capacityValue) { $row['capacity'] = $capacityValue }
+
+            $poolIdCandidate = & $firstPresent @($volume.volumeGroupRef,$volume.poolId,$volume.storagePoolId,$volume.volumeGroupId)
+            if ($poolIdCandidate) {
+                $pool = & $resolveLookup $poolById $poolIdCandidate
+                if ($pool) {
+                    $poolName = & $firstPresent @($pool.label,$pool.name,$pool.volumeGroupLabel,$pool.volumeGroupName)
+                    if ($poolName) { $row['poolName'] = $poolName }
+
+                    $poolFree = & $firstPresent @($pool.freeSpace,$pool.freeSpaceInBytes,$pool.freeCapacity,$pool.availableSpace)
+                    if ($poolFree) { $row['poolFreeSpace'] = $poolFree }
+
+                    $raidValue = & $firstPresent @($pool.raidLevel)
+                    if (-not $raidValue -and $pool.extents) {
+                        $firstExtent = $null
+                        if (($pool.extents -is [System.Collections.IEnumerable]) -and -not ($pool.extents -is [string])) {
+                            foreach ($ext in $pool.extents) { $firstExtent = $ext ; break }
+                        }
+                        if ($firstExtent -and $firstExtent.raidLevel) { $raidValue = $firstExtent.raidLevel }
+                    }
+                    if (-not $raidValue -and $volume.raidLevel) { $raidValue = $volume.raidLevel }
+                    if ($raidValue) { $row['raidLevel'] = $raidValue }
+                }
             }
         }
 
-        $target = $m.targetId -or $m.clusterRef -or $m.hostRef -or $m.hostGroup
-        if ($target) {
-            if ($hostByRef.ContainsKey([string]$target)) {
-                $h = $hostByRef[[string]$target]
-                $row['hostLabel'] = $h.label -or $h.name
-                $row['hostRef'] = $h.hostRef -or $h.id
-                $row['targetLabel'] = $row['hostLabel']
-            } elseif ($groupByCluster.ContainsKey([string]$target)) {
-                $g = $groupByCluster[[string]$target]
-                $row['hostGroup'] = $g.label -or $g.name
-                $row['clusterRef'] = $g.clusterRef -or $g.id
-                $row['targetLabel'] = $row['hostGroup']
-            } else {
-                $row['targetLabel'] = [string]$target
-            }
+        $hostMatch = $null
+        $groupMatch = $null
+        foreach ($candidate in @($m.targetId,$m.clusterRef,$m.hostRef,$m.hostGroup,$m.mapRef,$m.lunMappingRef)) {
+            if (-not $hostMatch) { $hostMatch = & $resolveLookup $hostByRef $candidate }
+            if ($hostMatch) { break }
+            if (-not $groupMatch) { $groupMatch = & $resolveLookup $groupByCluster $candidate }
+            if ($groupMatch) { break }
         }
 
-        $mapId = $m.mapRef -or $m.mappingRef -or $m.id -or $m.lunMappingRef
+        $targetLabel = $null
+        if ($hostMatch) {
+            $hostLabel = & $firstPresent @($hostMatch.label,$hostMatch.name,$hostMatch.hostLabel,$hostMatch.hostName)
+            if ($hostLabel) {
+                $row['hostLabel'] = $hostLabel
+                $targetLabel = $hostLabel
+            }
+            $hostRefValue = & $firstPresent @($hostMatch.hostRef,$hostMatch.id,$hostMatch.clusterRef)
+            if ($hostRefValue) { $row['hostRef'] = $hostRefValue }
+        } elseif ($groupMatch) {
+            $groupLabel = & $firstPresent @($groupMatch.label,$groupMatch.name,$groupMatch.hostGroupLabel,$groupMatch.clusterName)
+            if ($groupLabel) {
+                $row['hostGroup'] = $groupLabel
+                $targetLabel = $groupLabel
+            }
+            $clusterRefValue = & $firstPresent @($groupMatch.clusterRef,$groupMatch.id)
+            if ($clusterRefValue) { $row['clusterRef'] = $clusterRefValue }
+        }
+
+        if (-not $targetLabel) {
+            foreach ($fallback in @($m.targetLabel,$m.targetName,$m.hostGroup,$m.hostLabel,$m.clusterName,$m.targetId,$m.hostRef,$m.clusterRef,$m.mapRef,$m.lunMappingRef)) {
+                if ($null -ne $fallback -and -not [string]::IsNullOrWhiteSpace([string]$fallback)) {
+                    $targetLabel = [string]$fallback
+                    break
+                }
+            }
+        }
+        if ($targetLabel) { $row['targetLabel'] = $targetLabel }
+
+        $mapId = & $firstPresent @($m.mapRef,$m.mappingRef,$m.lunMappingRef,$m.id)
         if ($mapId) { $row['mappingRef'] = $mapId }
 
-        $obj = [PSCustomObject] $row
-        $out += $obj
+        $out += [PSCustomObject]$row
     }
 
     return $out
