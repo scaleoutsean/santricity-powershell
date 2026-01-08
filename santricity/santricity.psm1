@@ -161,7 +161,7 @@ function Connect-SANtricity {
     reachable and attempt to discover the storage-system id immediately.
 
     .EXAMPLE
-    Connect-SANtricity -BaseUrl 'https://10.113.1.158:8443' -Username admin -Password admin -IdCase upper
+    Connect-SANtricity -BaseUrl 'https://10.1.1.1:8443' -Username admin -Password admin -IdCase upper
 
     Connect-SANtricity -BaseUrl @('https://c1:8443','https://c2:8443') -Username admin -Password admin -IdCase lower
     #>
@@ -786,4 +786,4 @@ function Show-SANtricityMappingsReportFormatted {
     }
 }
 
-Export-ModuleMember -Function *-SANtricity*,Show-SANtricityMappingsReportFormatted
+Export-ModuleMember -Function Connect-SANtricity,Start-SANtricityTranscript,Stop-SANtricityTranscript,Get-SANtricityVolumes,Get-SANtricityStoragePools,Get-SANtricityHosts,Get-SANtricityHostGroups,Get-SANtricityVolumeMappings,Get-SANtricityMappingsReport,Show-SANtricityMappingsReportFormatted,Map-SANtricityVolume
