@@ -258,9 +258,6 @@ function Connect-SANtricity {
     } else {
         throw "Either Username/Password or Token must be provided"
     }
-    } else {
-        throw "Either Username/Password or Token must be provided"
-    }
 
     # normalize BaseUrl into an array of trimmed strings
     $baseUrls = @()
