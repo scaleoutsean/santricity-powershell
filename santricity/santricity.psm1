@@ -198,10 +198,22 @@ function Connect-SANtricity {
     if ([string]::IsNullOrWhiteSpace($AuthBasicPath)) { $AuthBasicPath = 'devmgr/utils' }
     else { $AuthBasicPath = $AuthBasicPath.Trim('/') }
 
+    # normalize BaseUrl into an array of trimmed strings
+    $baseUrls = @()
+    if ($null -ne $BaseUrl) {
+        if ($BaseUrl -is [System.Array]) {
+            foreach ($u in $BaseUrl) { $baseUrls += $u.TrimEnd('/') }
+        } else {
+            $baseUrls = ,($BaseUrl.ToString().TrimEnd('/'))
+        }
+    }
+
     # Session-based authentication (like curl but with persistent session)
     $webSession = $null
     $lastLoginError = $null
-    if ($Username -and $Password -and -not $SkipLogin) {
+    if ($SkipLogin) {
+        Write-Verbose 'SkipLogin specified; connection config will be created without authenticating.'
+    } elseif ($Username -and $Password) {
         # Login to get session cookie
         Write-Verbose "Attempting session-based login with user: $Username"
         Write-Verbose "BaseUrls configured: $($baseUrls -join ', ')"
@@ -265,16 +277,6 @@ function Connect-SANtricity {
         Write-Verbose "Using JWT token authentication"
     } else {
         throw "Either Username/Password or Token must be provided"
-    }
-
-    # normalize BaseUrl into an array of trimmed strings
-    $baseUrls = @()
-    if ($null -ne $BaseUrl) {
-        if ($BaseUrl -is [System.Array]) {
-            foreach ($u in $BaseUrl) { $baseUrls += $u.TrimEnd('/') }
-        } else {
-            $baseUrls = ,($BaseUrl.ToString().TrimEnd('/'))
-        }
     }
 
     # If TrustedCertificate is provided and VerifySsl wasn't explicitly set, enable validation
