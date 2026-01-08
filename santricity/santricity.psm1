@@ -22,8 +22,10 @@ if (Test-Path $richModulePath) {
 
 # Dot-source public helpers (keep core Connect/Invoke in this root file)
 $publicPath = Join-Path $scriptDir 'Public/MappingReport.psm1'
-if (Test-Path -LiteralPath $publicPath) {
+try {
     . $publicPath
+} catch {
+    # MappingReport helpers not available - continuing without them
 }
 
 function Start-SANtricityTranscript {
@@ -237,6 +239,7 @@ function Connect-SANtricity {
         BaseUrls        = $baseUrls
         ActiveBaseUrl   = if ($baseUrls.Count -gt 0) { $baseUrls[0] } else { $null }
         StorageSystemId = $StorageSystemId
+        StorageSystemIdExplicit = $PSBoundParameters.ContainsKey('StorageSystemId')
         AuthMode        = $Auth
         VerifySsl       = [bool]$VerifySsl
         IdCase          = $IdCase
