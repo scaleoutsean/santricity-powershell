@@ -22,16 +22,6 @@ try {
     # PowerShellRich not available - continuing without rich formatting
 }
 
-# Dot-source public helpers (keep core Connect/Invoke in this root file)
-$publicPath = Join-Path $scriptDir 'Public/MappingReport.psm1'
-if ([System.IO.File]::Exists($publicPath)) {
-    try {
-        . $publicPath
-    } catch {
-        # MappingReport helpers not available - continuing without them
-    }
-}
-
 function Start-SANtricityTranscript {
     <#
     .SYNOPSIS
@@ -139,7 +129,7 @@ function Connect-SANtricity {
     .PARAMETER TrustedCertificate
     Path to a .pem or .cer file containing the SANtricity controller's certificate or CA chain.
     When provided, this certificate will be trusted for TLS connections. Use this instead of
-    -VerifySsl:$false for production deployments.
+    -VerifySsl:$false for production deployments. Requires -UseLegacyHttpClient.
 
     .PARAMETER ApiBasePathPrefix
     API base path prefix (default 'devmgr/v2'). Use full API prefix; system scope will
@@ -168,6 +158,14 @@ function Connect-SANtricity {
     When specified, performs a quick request against the controller to confirm it is
     reachable and attempt to discover the storage-system id immediately.
 
+    .PARAMETER SkipLogin
+    Create the connection configuration without authenticating. Useful for dry-run testing
+    or CI where the controller is not reachable.
+
+    .PARAMETER UseLegacyHttpClient
+    Enable the legacy HttpClient-based request pipeline that supports trusted certificate
+    pinning via -TrustedCertificate.
+
     .EXAMPLE
     Connect-SANtricity -BaseUrl 'https://10.1.1.1:8443' -Username admin -Password admin -IdCase upper
 
@@ -189,7 +187,8 @@ function Connect-SANtricity {
         [switch] $CreateTranscript,
         [string] $TranscriptPath,
         [switch] $ValidateConnection,
-        [switch] $SkipLogin
+        [switch] $SkipLogin,
+        [switch] $UseLegacyHttpClient
     )
 
     if ([string]::IsNullOrWhiteSpace($ApiBasePathPrefix)) { $ApiBasePathPrefix = 'devmgr/v2' }
@@ -285,10 +284,13 @@ function Connect-SANtricity {
         throw "Either Username/Password or Token must be provided"
     }
 
-    # If TrustedCertificate is provided and VerifySsl wasn't explicitly set, enable validation
-    if (-not [string]::IsNullOrWhiteSpace($TrustedCertificate) -and -not $PSBoundParameters.ContainsKey('VerifySsl')) {
-        Write-Verbose "TrustedCertificate provided - enabling TLS validation"
-        $VerifySsl = $true
+    if ($TrustedCertificate) {
+        if (-not $UseLegacyHttpClient) {
+            throw "-TrustedCertificate currently requires -UseLegacyHttpClient."
+        }
+        if (-not [System.IO.File]::Exists($TrustedCertificate)) {
+            throw "Trusted certificate file not found: $TrustedCertificate"
+        }
     }
 
     # Normalize VerifySsl to a boolean even if user passed a string like 'false' or '0'
@@ -321,6 +323,7 @@ function Connect-SANtricity {
         Headers         = if ($Auth -eq 'Jwt') { $headers } else { @{} }
         VerifySsl       = $VerifySsl
         TrustedCertificate = $TrustedCertificate
+        UseLegacyHttpClient = [bool]$UseLegacyHttpClient
         ApiBasePathPrefix = $ApiBasePathPrefix
         AuthBasicPath   = $AuthBasicPath
         StorageSystemId = $StorageSystemId
@@ -553,53 +556,140 @@ function Invoke-SANtricityRequest {
             }
             Write-Verbose ("Request headers: {0}" -f ($logHeaders | ConvertTo-Json -Depth 8))
 
-            # Build Invoke-RestMethod parameters
-            $restParams = @{
-                Uri = $url
-                Method = $methodUpper
-                Headers = $headers
-                TimeoutSec = 90
-            }
-            
-            # Use WebSession for session-based auth (Basic)
-            if ($cfg.PSObject.Properties.Name -contains 'WebSession' -and $cfg.WebSession) {
-                $restParams['WebSession'] = $cfg.WebSession
+            if (-not $cfg.UseLegacyHttpClient) {
+                # Build Invoke-RestMethod parameters
+                $restParams = @{
+                    Uri = $url
+                    Method = $methodUpper
+                    Headers = $headers
+                    TimeoutSec = 90
+                }
+                
+                # Use WebSession for session-based auth (Basic)
+                if ($cfg.PSObject.Properties.Name -contains 'WebSession' -and $cfg.WebSession) {
+                    $restParams['WebSession'] = $cfg.WebSession
+                }
+
+                # Handle TLS certificate validation
+                if ($cfg.VerifySsl -eq $false) {
+                    Write-Verbose "Disabling TLS certificate validation with -SkipCertificateCheck"
+                    $restParams['SkipCertificateCheck'] = $true
+                }
+
+                # Handle request body
+                if ($PSBoundParameters.ContainsKey('Body')) {
+                    $bodyPayload = $Body
+                    if ($null -ne $bodyPayload -and -not ($bodyPayload -is [string])) {
+                        $bodyPayload = $bodyPayload | ConvertTo-Json -Depth 32
+                    }
+                    $restParams['Body'] = $bodyPayload
+                    $restParams['ContentType'] = $ContentType
+                }
+
+                # Make the request
+                $response = Invoke-RestMethod @restParams
+
+                Write-Verbose ("WebResponse: {0} {1}" -f $methodUpper, $url)
+                $cfg.LastSuccessfulBaseUrl = $base
+                $script:SANtricity_Config = $cfg
+
+                if ($RawResponse) {
+                    if ($response -is [string]) { return $response }
+                    return ($response | ConvertTo-Json -Depth 64)
+                }
+                return $response
             }
 
-            # Handle TLS certificate validation
+            Write-Verbose "Using legacy HttpClientHandler path for this request"
+            $handler = [System.Net.Http.HttpClientHandler]::new()
+
             if ($cfg.VerifySsl -eq $false) {
-                Write-Verbose "Disabling TLS certificate validation with -SkipCertificateCheck"
-                $restParams['SkipCertificateCheck'] = $true
-            } elseif ($cfg.PSObject.Properties.Name -contains 'TrustedCertificate' -and -not [string]::IsNullOrWhiteSpace($cfg.TrustedCertificate)) {
-                Write-Verbose "TrustedCertificate parameter is not yet implemented in Invoke-RestMethod"
-                Write-Verbose "Workaround: Using -SkipCertificateCheck (certificate will be loaded but not validated)"
-                Write-Warning "Certificate trust validation not yet implemented. Install the certificate in your system trust store, or use -VerifySsl:`$false for testing."
-                # For now, skip validation - proper implementation requires HttpClientHandler with custom callback
-                $restParams['SkipCertificateCheck'] = $true
+                Write-Verbose "Legacy mode: disabling TLS validation via custom callback"
+                $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
+                    param($request, $cert, $chain, $errors)
+                    return $true
+                }
+                $handler.ServerCertificateCustomValidationCallback = $callback
+            } elseif ($cfg.TrustedCertificate) {
+                Write-Verbose "Legacy mode: loading trusted certificate from $($cfg.TrustedCertificate)"
+                try {
+                    $certBytes = [System.IO.File]::ReadAllBytes($cfg.TrustedCertificate)
+                    $trustedCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes)
+                    $trustedThumbprint = $trustedCert.Thumbprint
+                    $trustedSubject = $trustedCert.Subject
+                    Write-Verbose "Trusted certificate loaded: Subject=$trustedSubject | Thumbprint=$trustedThumbprint"
+
+                    $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
+                        param($request, $cert, $chain, $errors)
+                        if ($null -eq $cert) { return $false }
+                        if ($errors -eq [System.Net.Security.SslPolicyErrors]::None -and $cert.Thumbprint -eq $trustedThumbprint) { return $true }
+                        if ($cert.Thumbprint -eq $trustedThumbprint) { return $true }
+                        return $false
+                    }
+                    $handler.ServerCertificateCustomValidationCallback = $callback
+                } catch {
+                    throw "Failed to load trusted certificate file $($cfg.TrustedCertificate): $($_.Exception.Message)"
+                }
+            } else {
+                Write-Verbose "Legacy mode: using system trust store for TLS validation"
             }
 
-            # Handle request body
+            $client = [System.Net.Http.HttpClient]::new($handler)
+            $client.Timeout = [System.TimeSpan]::FromSeconds(90)
+            $requestMessage = [System.Net.Http.HttpRequestMessage]::new($httpMethod, $url)
+
+            foreach ($key in $headers.Keys) {
+                if ($headers[$key]) { $null = $requestMessage.Headers.TryAddWithoutValidation($key, $headers[$key]) }
+            }
+
             if ($PSBoundParameters.ContainsKey('Body')) {
                 $bodyPayload = $Body
-                if ($null -ne $bodyPayload -and -not ($bodyPayload -is [string])) {
+                if ($null -ne $bodyPayload -and -not ($bodyPayload -is [string]) -and -not ($bodyPayload -is [byte[]])) {
                     $bodyPayload = $bodyPayload | ConvertTo-Json -Depth 32
                 }
-                $restParams['Body'] = $bodyPayload
-                $restParams['ContentType'] = $ContentType
+
+                if ($bodyPayload -is [byte[]]) {
+                    $content = [System.Net.Http.ByteArrayContent]::new($bodyPayload)
+                    if ($ContentType) {
+                        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($ContentType)
+                    }
+                } else {
+                    $encoding = [System.Text.Encoding]::UTF8
+                    $useContentType = if ($ContentType) { $ContentType } else { 'application/json' }
+                    $content = [System.Net.Http.StringContent]::new([string]$bodyPayload, $encoding, $useContentType)
+                }
+                $requestMessage.Content = $content
             }
 
-            # Make the request
-            $response = Invoke-RestMethod @restParams
+            try {
+                $responseMessage = $client.SendAsync($requestMessage).GetAwaiter().GetResult()
+                $rawResponse = if ($responseMessage.Content) { $responseMessage.Content.ReadAsStringAsync().GetAwaiter().GetResult() } else { $null }
 
-            Write-Verbose ("WebResponse: {0} {1}" -f $methodUpper, $url)
-            $cfg.LastSuccessfulBaseUrl = $base
-            $script:SANtricity_Config = $cfg
+                if (-not $responseMessage.IsSuccessStatusCode) {
+                    $statusMsg = "{0} ({1})" -f [int]$responseMessage.StatusCode, $responseMessage.ReasonPhrase
+                    $errorText = "Response status code does not indicate success: $statusMsg"
+                    if ($rawResponse) { $errorText = "$errorText. Body: $rawResponse" }
+                    throw [System.Net.Http.HttpRequestException]::new($errorText)
+                }
 
-            if ($RawResponse) {
-                if ($response -is [string]) { return $response }
-                return ($response | ConvertTo-Json -Depth 64)
+                Write-Verbose ("WebResponse: {0} {1}" -f $methodUpper, $url)
+                $cfg.LastSuccessfulBaseUrl = $base
+                $script:SANtricity_Config = $cfg
+
+                if ($RawResponse) { return $rawResponse }
+                if ([string]::IsNullOrWhiteSpace($rawResponse)) { return $true }
+
+                try {
+                    return $rawResponse | ConvertFrom-Json -Depth 64
+                } catch {
+                    return $rawResponse
+                }
+            } finally {
+                if ($responseMessage) { $responseMessage.Dispose() }
+                if ($requestMessage) { $requestMessage.Dispose() }
+                if ($client) { $client.Dispose() }
+                if ($handler) { $handler.Dispose() }
             }
-            return $response
         } catch {
             $lastException = $_
             Write-Verbose "Request attempt failed: $lastAttemptedUrl -> $($_.Exception.Message)"

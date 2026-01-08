@@ -14,12 +14,14 @@ Import-Module ./PowerShellRich/PowerShellRich.psd1 -ErrorAction SilentlyContinue
 # For testing/lab (skips certificate validation):
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -VerifySsl:$false -Verbose
 
-# For production (trust the controller's certificate):
-$conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-cert.pem' -Verbose
+# For production with controller cert pinning:
+$conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -UseLegacyHttpClient -TrustedCertificate '/path/to/controller-cert.pem' -Verbose
 
 Get-SANtricityVolumes -Verbose
 Get-SANtricityMappingsReport | Format-Table -AutoSize
 ```
+
+> **TLS note:** the default pipeline (Invoke-RestMethod) only supports skipping validation via `-VerifySsl:$false`. Use `-UseLegacyHttpClient -TrustedCertificate /path/cert.pem` to pin a controller certificate via the HttpClient-based pipeline.
 
 ### Run tests inside Docker
 
