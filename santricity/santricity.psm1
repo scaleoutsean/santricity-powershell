@@ -437,11 +437,16 @@ function Invoke-SANtricityRequest {
             }
 
             $lastAttemptedUrl = $url
+            $verifySslValue = if ($null -eq $cfg.VerifySsl) { 'null' } else { [string]$cfg.VerifySsl }
+            Write-Verbose ("VerifySsl config: $verifySslValue (type: $($cfg.VerifySsl.GetType().Name))")
             Write-Verbose ("WebRequest: {0} {1}" -f $methodUpper, $url)
 
             $handler = [System.Net.Http.HttpClientHandler]::new()
             if (-not $cfg.VerifySsl) {
+                Write-Verbose "Setting ServerCertificateCustomValidationCallback to skip TLS verification"
                 $handler.ServerCertificateCustomValidationCallback = { $true }
+            } else {
+                Write-Verbose "TLS certificate validation is enabled"
             }
 
             $client = [System.Net.Http.HttpClient]::new($handler)
