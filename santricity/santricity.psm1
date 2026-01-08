@@ -22,15 +22,9 @@ if (Test-Path $richModulePath) {
 
 # Dot-source public helpers (keep core Connect/Invoke in this root file)
 $publicPath = Join-Path $scriptDir 'Public/MappingReport.psm1'
-$publicModule = $null
-try {
-    if (Test-Path -LiteralPath $publicPath) {
-        $publicModule = Get-Item -LiteralPath $publicPath -ErrorAction Stop
-    }
-} catch {
-    Write-Warning ("Unable to resolve public helper module at {0}: {1}" -f $publicPath,$_.Exception.Message)
+if (Test-Path -LiteralPath $publicPath) {
+    . $publicPath
 }
-if ($publicModule) { . "$($publicModule.FullName)" }
 
 function Start-SANtricityTranscript {
     <#
@@ -443,14 +437,29 @@ function Invoke-SANtricityRequest {
             Write-Verbose ("VerifySsl config: $verifySslValue (type: $($cfg.VerifySsl.GetType().Name))")
             Write-Verbose ("WebRequest: {0} {1}" -f $methodUpper, $url)
 
-            $handler = [System.Net.Http.HttpClientHandler]::new()
-            if (-not $cfg.VerifySsl) {
+            # Try ServicePointManager approach first (works on older .NET/Windows)
+            if ($cfg.VerifySsl -eq $false) {
                 Write-Verbose "Disabling TLS certificate validation"
-                $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
-                    param($request, $cert, $chain, $errors)
-                    return $true
+                try {
+                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+                    Write-Verbose "Set ServicePointManager.ServerCertificateValidationCallback"
+                } catch {
+                    Write-Verbose "ServicePointManager approach failed: $_"
                 }
-                $handler.ServerCertificateCustomValidationCallback = $callback
+            }
+            
+            $handler = [System.Net.Http.HttpClientHandler]::new()
+            if ($cfg.VerifySsl -eq $false) {
+                try {
+                    $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
+                        param($request, $cert, $chain, $errors)
+                        return $true
+                    }
+                    $handler.ServerCertificateCustomValidationCallback = $callback
+                    Write-Verbose "Set HttpClientHandler.ServerCertificateCustomValidationCallback"
+                } catch {
+                    Write-Verbose "HttpClientHandler callback failed: $_"
+                }
             } else {
                 Write-Verbose "TLS certificate validation is enabled"
             }
