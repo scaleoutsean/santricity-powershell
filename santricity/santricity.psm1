@@ -224,13 +224,19 @@ function Connect-SANtricity {
                 $loginUrl = "$base/$AuthBasicPath/login"
                 Write-Verbose "Login URL: $loginUrl"
                 
-                $loginBody = @{
+                $loginBodyHashtable = @{
                     userId = $Username
                     password = $Password
                     xsrfProtected = $false
-                } | ConvertTo-Json
-                
-                Write-Verbose "Login body: $loginBody"
+                }
+                $loginBody = $loginBodyHashtable | ConvertTo-Json
+
+                $sanitizedBody = (@{
+                    userId = $Username
+                    password = '<redacted>'
+                    xsrfProtected = $loginBodyHashtable.xsrfProtected
+                } | ConvertTo-Json)
+                Write-Verbose "Login body (sanitized): $sanitizedBody"
                 
                 $loginHeaders = @{
                     'Accept' = 'application/json'
@@ -320,6 +326,7 @@ function Connect-SANtricity {
         StorageSystemId = $StorageSystemId
         StorageSystemIdExplicit = $PSBoundParameters.ContainsKey('StorageSystemId')
         IdCase          = $IdCase
+        LastSuccessfulBaseUrl = $null
     }
 
     Write-Verbose "SANtricity_Config set: BaseUrls=$($baseUrls -join ',') StorageSystemId=$StorageSystemId"
@@ -533,6 +540,18 @@ function Invoke-SANtricityRequest {
                     if ($AdditionalHeaders[$key]) { $headers[$key] = $AdditionalHeaders[$key] }
                 }
             }
+
+            # Prepare sanitized headers for verbose logging
+            $logHeaders = $headers.Clone()
+            if ($logHeaders.ContainsKey('Authorization')) {
+                $authValue = $logHeaders['Authorization']
+                if ($authValue -and $authValue.StartsWith('Bearer ', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $logHeaders['Authorization'] = 'Bearer <redacted>'
+                } elseif ($authValue -and $authValue.StartsWith('Basic ', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $logHeaders['Authorization'] = 'Basic <redacted>'
+                }
+            }
+            Write-Verbose ("Request headers: {0}" -f ($logHeaders | ConvertTo-Json -Depth 8))
 
             # Build Invoke-RestMethod parameters
             $restParams = @{
