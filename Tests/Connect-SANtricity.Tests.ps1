@@ -5,18 +5,18 @@ Describe 'Connect-SANtricity with TLS certificate bypass' {
     }
 
     It 'Connect-SANtricity stores VerifySsl config correctly' {
-        $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'admin' -Password 'password' -VerifySsl:$false -StorageSystemId '1'
+        $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'admin' -Password 'password' -VerifySsl:$false -StorageSystemId '1' -SkipLogin
         $res.VerifySsl | Should -BeFalse
         $res.StorageSystemId | Should -Be '1'
     }
 
     It 'Connect-SANtricity with VerifySsl true' {
-        $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'admin' -Password 'password' -VerifySsl:$true -StorageSystemId '1'
+        $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'admin' -Password 'password' -VerifySsl:$true -StorageSystemId '1' -SkipLogin
         $res.VerifySsl | Should -BeTrue
     }
 
     It 'Explicit StorageSystemId skips discovery' {
-        $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'admin' -Password 'password' -VerifySsl:$false -StorageSystemId 'explicit-id-123'
+        $res = Connect-SANtricity -BaseUrl 'https://example.com' -Username 'admin' -Password 'password' -VerifySsl:$false -StorageSystemId 'explicit-id-123' -SkipLogin
         $res.StorageSystemId | Should -Be 'explicit-id-123'
         $res.StorageSystemIdExplicit | Should -BeTrue
     }
