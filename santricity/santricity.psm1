@@ -233,6 +233,7 @@ function Connect-SANtricity {
         ApiBasePathPrefix = $ApiBasePathPrefix
         AuthBasicPath   = $AuthBasicPath
         StorageSystemId = $StorageSystemId
+        StorageSystemIdExplicit = $PSBoundParameters.ContainsKey('StorageSystemId')
         IdCase          = $IdCase
     }
 
@@ -541,6 +542,18 @@ function Get-SANtricitySystemId {
 
     $cfg = $script:SANtricity_Config
     if (-not $cfg) { throw 'Not connected. Call Connect-SANtricity first.' }
+    
+    # If user explicitly provided a StorageSystemId, use it without discovery
+    if ($cfg.PSObject.Properties.Name -contains 'StorageSystemIdExplicit' -and $cfg.StorageSystemIdExplicit) {
+        $id = [string]$cfg.StorageSystemId
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            throw 'Configured StorageSystemId is empty or whitespace. Call Connect-SANtricity with a valid -StorageSystemId.'
+        }
+        Write-Verbose "Using explicitly configured StorageSystemId: $id"
+        return $id
+    }
+    
+    # If we have a non-default ID, use it
     if ($cfg.StorageSystemId -and $cfg.StorageSystemId -ne '1') {
         $id = [string]$cfg.StorageSystemId
         if ([string]::IsNullOrWhiteSpace($id)) {
