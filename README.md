@@ -2,7 +2,9 @@ Santricity PowerShell helper
 =================================
 
 Minimal PowerShell 7 module providing lightweight helpers to call a SANtricity
-REST API and produce a mappings report similar to the Python client.
+REST API and produce a mappings report similar to the Python client (`santricity-client`).
+
+It has been tested with PowerShell 7.5 and 7.6 (Preview 6).
 
 Usage (PowerShell 7):
 
@@ -22,6 +24,8 @@ Get-SANtricityMappingsReport | Format-Table -AutoSize
 ```
 
 > **TLS note:** provide `-TrustedCertificate /path/chain.pem` with either a controller certificate or a custom CA bundle to enable pinned TLS. The module automatically routes requests through the legacy HttpClient pipeline in that case, so you only need `-VerifySsl:$false` for quick lab testing.
+
+You may create a transcript (if you need one) with `-Create Transcript -TranscriptPath ts.txt`.
 
 ### Run tests inside Docker
 
