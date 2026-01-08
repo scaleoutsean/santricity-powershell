@@ -187,13 +187,54 @@ function Connect-SANtricity {
         [switch] $ValidateConnection
     )
 
-    $headers = @{}
-    if ($Auth -eq 'Jwt' -and $Token) {
-        $headers['Authorization'] = "Bearer $Token"
-    } elseif ($Auth -eq 'Basic' -and $Username -and $Password) {
-        $basicRaw = "{0}:{1}" -f $Username,$Password
-        $pair = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($basicRaw))
-        $headers['Authorization'] = "Basic $pair"
+    # Session-based authentication (like curl but with persistent session)
+    $webSession = $null
+    if ($Username -and $Password) {
+        # Login to get session cookie
+        foreach ($base in $baseUrls) {
+            try {
+                $loginUrl = "$base/$AuthBasicPath/login"
+                $loginBody = @{
+                    userId = $Username
+                    password = $Password
+                    xsrfProtected = $false
+                } | ConvertTo-Json
+                
+                $loginHeaders = @{
+                    'Accept' = 'application/json'
+                    'Content-Type' = 'application/json'
+                }
+                
+                $loginParams = @{
+                    Uri = $loginUrl
+                    Method = 'POST'
+                    Headers = $loginHeaders
+                    Body = $loginBody
+                    SessionVariable = 'webSession'
+                }
+                
+                if ($VerifySsl -eq $false) {
+                    $loginParams['SkipCertificateCheck'] = $true
+                }
+                
+                Write-Verbose "Logging in to: $loginUrl"
+                $null = Invoke-RestMethod @loginParams
+                Write-Verbose "Login successful, session captured"
+                break
+            } catch {
+                Write-Verbose "Login failed at $base : $($_.Exception.Message)"
+                continue
+            }
+        }
+        
+        if (-not $webSession) {
+            throw "Failed to establish session with any configured controller. Check credentials and connectivity."
+        }
+    } elseif ($Auth -eq 'Jwt' -and $Token) {
+        # JWT token support (session not needed)
+        $headers = @{ 'Authorization' = "Bearer $Token" }
+    } else {
+        throw "Either Username/Password or Token must be provided"
     }
 
     # normalize BaseUrl into an array of trimmed strings
@@ -238,7 +279,8 @@ function Connect-SANtricity {
 
     $script:SANtricity_Config = [pscustomobject]@{
         BaseUrls        = $baseUrls
-        Headers         = $headers
+        WebSession      = $webSession
+        Headers         = if ($Auth -eq 'Jwt') { $headers } else { @{} }
         VerifySsl       = $VerifySsl
         TrustedCertificate = $TrustedCertificate
         ApiBasePathPrefix = $ApiBasePathPrefix
@@ -466,6 +508,11 @@ function Invoke-SANtricityRequest {
                 Method = $methodUpper
                 Headers = $headers
                 TimeoutSec = 90
+            }
+            
+            # Use WebSession for session-based auth (Basic)
+            if ($cfg.PSObject.Properties.Name -contains 'WebSession' -and $cfg.WebSession) {
+                $restParams['WebSession'] = $cfg.WebSession
             }
 
             # Handle TLS certificate validation
