@@ -24,10 +24,12 @@ try {
 
 # Dot-source public helpers (keep core Connect/Invoke in this root file)
 $publicPath = Join-Path $scriptDir 'Public/MappingReport.psm1'
-try {
-    . $publicPath
-} catch {
-    # MappingReport helpers not available - continuing without them
+if ([System.IO.File]::Exists($publicPath)) {
+    try {
+        . $publicPath
+    } catch {
+        # MappingReport helpers not available - continuing without them
+    }
 }
 
 function Start-SANtricityTranscript {
@@ -186,7 +188,8 @@ function Connect-SANtricity {
         [ValidateSet('none','upper','lower')] [string] $IdCase = 'none',
         [switch] $CreateTranscript,
         [string] $TranscriptPath,
-        [switch] $ValidateConnection
+        [switch] $ValidateConnection,
+        [switch] $SkipLogin
     )
 
     if ([string]::IsNullOrWhiteSpace($ApiBasePathPrefix)) { $ApiBasePathPrefix = 'devmgr/v2' }
@@ -198,7 +201,7 @@ function Connect-SANtricity {
     # Session-based authentication (like curl but with persistent session)
     $webSession = $null
     $lastLoginError = $null
-    if ($Username -and $Password) {
+    if ($Username -and $Password -and -not $SkipLogin) {
         # Login to get session cookie
         Write-Verbose "Attempting session-based login with user: $Username"
         Write-Verbose "BaseUrls configured: $($baseUrls -join ', ')"
