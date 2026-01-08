@@ -142,7 +142,8 @@ function Connect-SANtricity {
     Path used for auth basic endpoints (default 'devmgr/utils').
 
     .PARAMETER StorageSystemId
-    Storage system id to use in API paths (default '1').
+    Storage system id to use in API paths (default '1'). Provide the actual system ID/WWN
+    to skip auto-discovery, which requires a successful TLS-protected API call.
 
     .PARAMETER IdCase
     Identifier normalization mode: 'none' (default), 'upper', or 'lower'. When set,
@@ -444,10 +445,11 @@ function Invoke-SANtricityRequest {
             $handler = [System.Net.Http.HttpClientHandler]::new()
             if (-not $cfg.VerifySsl) {
                 Write-Verbose "Disabling TLS certificate validation"
-                $handler.ServerCertificateCustomValidationCallback = {
+                $callback = [System.Func[System.Net.Http.HttpRequestMessage, System.Security.Cryptography.X509Certificates.X509Certificate2, System.Security.Cryptography.X509Certificates.X509Chain, System.Net.Security.SslPolicyErrors, bool]] {
                     param($request, $cert, $chain, $errors)
                     return $true
                 }
+                $handler.ServerCertificateCustomValidationCallback = $callback
             } else {
                 Write-Verbose "TLS certificate validation is enabled"
             }
