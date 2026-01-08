@@ -443,27 +443,11 @@ function Invoke-SANtricityRequest {
 
             $handler = [System.Net.Http.HttpClientHandler]::new()
             if (-not $cfg.VerifySsl) {
-                Write-Verbose "Setting ServerCertificateCustomValidationCallback to skip TLS verification"
-                try {
-                    $handler.ServerCertificateCustomValidationCallback = { $true }
-                } catch {
-                    Write-Verbose "Handler callback not supported; using ServicePointManager fallback"
+                Write-Verbose "Disabling TLS certificate validation"
+                $handler.ServerCertificateCustomValidationCallback = {
+                    param($request, $cert, $chain, $errors)
+                    return $true
                 }
-                # Fallback for older .NET where HttpClientHandler callback doesn't work
-                if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
-                    Add-Type -TypeDefinition @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsPolicy : ICertificatePolicy {
-    public bool CheckValidationResult(ServicePoint svcPoint, X509Certificate cert, WebRequest req, int problem) {
-        return true;
-    }
-}
-"@
-                }
-                [System.Net.ServicePointManager]::CertificatePolicy = [TrustAllCertsPolicy]::new()
-                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-                Write-Verbose "Applied ServicePointManager TLS bypass for compatibility"
             } else {
                 Write-Verbose "TLS certificate validation is enabled"
             }
