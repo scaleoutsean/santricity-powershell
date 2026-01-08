@@ -139,7 +139,7 @@ function Get-SANtricityTrustedCertificateInfo {
     foreach ($cert in $certs) {
         $isCa = $false
         foreach ($ext in $cert.Extensions) {
-            $basic = $ext -as X509BasicConstraintsExtension
+            $basic = $ext -as [X509BasicConstraintsExtension]
             if ($basic -and $basic.CertificateAuthority) {
                 $isCa = $true
                 break
