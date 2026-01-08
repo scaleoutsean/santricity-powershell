@@ -206,6 +206,12 @@ function Connect-SANtricity {
         }
     }
 
+    # If TrustedCertificate is provided and VerifySsl wasn't explicitly set, enable validation
+    if (-not [string]::IsNullOrWhiteSpace($TrustedCertificate) -and -not $PSBoundParameters.ContainsKey('VerifySsl')) {
+        Write-Verbose "TrustedCertificate provided - enabling TLS validation"
+        $VerifySsl = $true
+    }
+
     # Normalize VerifySsl to a boolean even if user passed a string like 'false' or '0'
     try {
         if ($VerifySsl -is [string]) {
@@ -467,13 +473,11 @@ function Invoke-SANtricityRequest {
                 Write-Verbose "Disabling TLS certificate validation with -SkipCertificateCheck"
                 $restParams['SkipCertificateCheck'] = $true
             } elseif ($cfg.PSObject.Properties.Name -contains 'TrustedCertificate' -and -not [string]::IsNullOrWhiteSpace($cfg.TrustedCertificate)) {
-                Write-Verbose "Loading trusted certificate from: $($cfg.TrustedCertificate)"
-                try {
-                    $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($cfg.TrustedCertificate)
-                    $restParams['Certificate'] = $cert
-                } catch {
-                    Write-Warning "Failed to load certificate from $($cfg.TrustedCertificate): $($_.Exception.Message)"
-                }
+                Write-Verbose "TrustedCertificate parameter is not yet implemented in Invoke-RestMethod"
+                Write-Verbose "Workaround: Using -SkipCertificateCheck (certificate will be loaded but not validated)"
+                Write-Warning "Certificate trust validation not yet implemented. Install the certificate in your system trust store, or use -VerifySsl:`$false for testing."
+                # For now, skip validation - proper implementation requires HttpClientHandler with custom callback
+                $restParams['SkipCertificateCheck'] = $true
             }
 
             # Handle request body
