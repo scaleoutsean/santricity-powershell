@@ -16,8 +16,10 @@ $script:SANtricityTranscriptInfo = $null
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $repoRoot = Split-Path -Path $scriptDir -Parent
 $richModulePath = Join-Path $repoRoot 'PowerShellRich/PowerShellRich.psd1'
-if (Test-Path $richModulePath) {
+try {
     Import-Module $richModulePath -Force -ErrorAction SilentlyContinue
+} catch {
+    # PowerShellRich not available - continuing without rich formatting
 }
 
 # Dot-source public helpers (keep core Connect/Invoke in this root file)
@@ -199,6 +201,9 @@ function Connect-SANtricity {
     if ($Username -and $Password) {
         # Login to get session cookie
         Write-Verbose "Attempting session-based login with user: $Username"
+        Write-Verbose "BaseUrls configured: $($baseUrls -join ', ')"
+        Write-Verbose "AuthBasicPath: $AuthBasicPath"
+        
         foreach ($base in $baseUrls) {
             try {
                 $loginUrl = "$base/$AuthBasicPath/login"
