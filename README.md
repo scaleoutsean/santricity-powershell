@@ -10,7 +10,7 @@ Usage (PowerShell 7):
 
 ```powershell
 Import-Module ./santricity/santricity.psd1 -Force
-# Optional rich tables (bundled for convenience)
+# Optional rich tables (git clone https://github.com/dfinke/PowerShellRich.git)
 Import-Module ./PowerShellRich/PowerShellRich.psd1 -ErrorAction SilentlyContinue
 
 # For testing/lab (skips certificate validation):
@@ -27,16 +27,4 @@ Get-SANtricityMappingsReport | Format-Table -AutoSize
 
 You may create a transcript (if you need one) with `-Create Transcript -TranscriptPath ts.txt`.
 
-### Run tests inside Docker
-
-If your host PowerShell setup is unreliable, you can run the test suite inside the
-official .NET SDK 9.0 container:
-
-```bash
-docker compose run --rm powershell-tests
-```
-
-The first run installs PowerShell inside the container, then executes
-`./scripts/run-tests.sh` against the workspace mounted at `/workspace`.
-
-
+Some cmdlets do not behave exactly the same as the SANtricity API - we tend to err on the safe side. For example, SANtricity and SMcli [delete member hosts](https://docs.netapp.com/us-en/e-series-cli/commands-a-z/delete-hostgroup.html#context) when a group is deleted. We aim to prevent such disorderly entity removal by returning an error, but the user can override such safeguards with `-Force`. See (CMDLETS)[./CMDLETS.md] and online help for more.
