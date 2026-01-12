@@ -670,4 +670,11 @@ function Invoke-SANtricityRequest {
     }
 }
 
-Export-ModuleMember -Function Connect-SANtricity,Start-SANtricityTranscript,Stop-SANtricityTranscript,Get-SANtricityVolumes,Get-SANtricityStoragePools,Get-SANtricityHosts,Get-SANtricityHostGroups,Get-SANtricityVolumeMappings,Get-SANtricityMappingsReport,Show-SANtricityMappingsReportFormatted,Get-SANtricityTargets,New-SANtricityVolume,Set-SANtricityVolume,Resize-SANtricityVolume,New-SANtricityVolumeMapping,Remove-SANtricityVolume,Remove-SANtricityVolumeMapping
+# Export functions defined inline plus all public functions found in Public/ directory
+$publicFunctionsPath = Join-Path $scriptDir 'Public'
+$dynamicExports = if (Test-Path $publicFunctionsPath) {
+    (Get-ChildItem -Path $publicFunctionsPath -Filter '*.ps1').BaseName
+} else { @() }
+$staticExports = @('Connect-SANtricity', 'Invoke-SANtricityRequest')
+
+Export-ModuleMember -Function ($staticExports + $dynamicExports)
