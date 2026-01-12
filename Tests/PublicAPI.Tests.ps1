@@ -47,10 +47,11 @@ Describe "Module Public API Surface" {
         "Stop-SANtricityTranscript"
     )
 
-    foreach ($cmdlet in $publicCmdlets) {
-        It "Exports cmdlet '$cmdlet'" {
-            $cmd = Get-Command -Name $cmdlet -ErrorAction SilentlyContinue
-            $cmd | Should -Not -BeNullOrEmpty
-        }
+    $testCases = $publicCmdlets | ForEach-Object { @{ CmdletName = $_ } }
+
+    It "Exports cmdlet '<CmdletName>'" -TestCases $testCases {
+        param($CmdletName)
+        $cmd = Get-Command -Name $CmdletName -ErrorAction SilentlyContinue
+        $cmd | Should -Not -BeNullOrEmpty
     }
 }
