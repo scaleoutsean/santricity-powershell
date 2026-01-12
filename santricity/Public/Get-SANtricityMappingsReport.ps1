@@ -151,7 +151,7 @@ function Get-SANtricityMappingsReport {
 
         $hostMatch = $null
         $groupMatch = $null
-        foreach ($candidate in @($m.targetId,$m.clusterRef,$m.hostRef,$m.hostGroup,$m.mapRef,$m.lunMapping Ref)) {
+        foreach ($candidate in @($m.targetId,$m.clusterRef,$m.hostRef,$m.hostGroup,$m.mapRef,$m.lunMappingRef)) {
             if (-not $hostMatch) { $hostMatch = & $resolveLookup $hostByRef $candidate }
             if ($hostMatch) { break }
             if (-not $groupMatch) { $groupMatch = & $resolveLookup $groupByCluster $candidate }
