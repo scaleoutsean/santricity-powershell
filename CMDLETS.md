@@ -54,6 +54,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 ### Diagnostics
 | Cmdlet | Status | Notes |
 |--------|--------|-------|
+| `Get-SANtricityOdxStatus` | **Beta** | Confirms (`$True`) Windows ODX enabled status (factory default) |
 | `Start-SANtricityTranscript` | **Stable** | |
 | `Stop-SANtricityTranscript` | **Stable** | |
 
