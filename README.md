@@ -28,3 +28,9 @@ Get-SANtricityMappingsReport | Format-Table -AutoSize
 You may create a transcript (if you need one) with `-Create Transcript -TranscriptPath ts.txt`.
 
 Some cmdlets do not behave exactly the same as the SANtricity API - we tend to err on the safe side. For example, SANtricity and SMcli [delete member hosts](https://docs.netapp.com/us-en/e-series-cli/commands-a-z/delete-hostgroup.html#context) when a group is deleted. We aim to prevent such disorderly entity removal by returning an error, but the user can override such safeguards with `-Force`. See [CMDLETS](./CMDLETS.md) and online help for more.
+
+## Acknowledgements
+
+SANtricity, E-Series belong to NetApp and PowerShell to Microsoft.
+
+This repository is not associated with either.
