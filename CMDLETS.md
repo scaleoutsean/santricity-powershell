@@ -30,6 +30,8 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Get-SANtricityMappingsReport` | **Stable** | Aggregates data from multiple endpoints. |
 | `Show-SANtricityMappingsReportFormatted` | **Stable** | Formats report using PowerShellRich if available. |
 | `Get-SANtricityTargets` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
+| `Get-SANtricitySnapshotGroup` | **Beta** | Gets snapshot groups (repositories). Supports filter by Name/BaseVolume. |
+| `New-SANtricitySnapshotGroup` | **Beta** | Creates new snapshot group (repository). Supports BaseVolumeId or VolumeName. |
 
 ### Volume Management
 
@@ -87,6 +89,16 @@ Offline work:
 ```powershell
 $mockPools = Import-Clixml -Path '.\references\mock_pools.xml'
 $mockPools | ForEach-Object {
-    # ... logic to process pools ...
+    # ... process ...
 }
+```
+
+Similarly, with HAR files:
+
+```powershell
+$har = Get-Content .\snapshot-create.har | ConvertFrom-Json
+$har.log.entries | 
+    Where-Object { $_.request.method -eq 'POST' } | 
+    Select-Object -ExpandProperty request | 
+    Select-Object url, postData
 ```
