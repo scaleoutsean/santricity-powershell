@@ -25,6 +25,7 @@ Remove-SANtricityVolumeMapping -VolumeName "DataVol1" -TargetName "ESX-Cluster"
 #>
 function Remove-SANtricityVolumeMapping {
     [CmdletBinding(DefaultParameterSetName="ById", SupportsShouldProcess=$true)]
+    [Alias("Remove-SANtricityHostMapping")]
     param (
         [Parameter(Mandatory=$true, ParameterSetName="ById", Position=0, ValueFromPipeline=$true)]
         [string]$MappingRef,
@@ -76,8 +77,21 @@ function Remove-SANtricityVolumeMapping {
                 throw "TargetName '$TargetName' not found in Hosts or Host Groups."
             }
 
-            $targetId = if ($matchedHosts.Count -eq 1) { $matchedHosts[0].id } else { $matchedGroups[0].id }
-            $targetType = if ($matchedHosts.Count -eq 1) { "Host" } else { "Host Group" }
+            $targetId = if ($matchedHosts.Count -eq 1) { 
+                # Smart Host Cluster Resolution
+                $h = $matchedHosts[0]
+                $zeroRef = "0" * 40
+                # If host is in a cluster, we likely mapped it to the ClusterRef
+                if ($h.clusterRef -and $h.clusterRef -ne $zeroRef) {
+                    Write-Warning "Host '$($h.label)' is part of a cluster/host-group. Assuming mapping is to the cluster ($($h.clusterRef))."
+                    $h.clusterRef
+                } else {
+                    $h.id
+                }
+            } else { 
+                $matchedGroups[0].id 
+            }
+            $targetType = if ($matchedHosts.Count -eq 1) { "Host (or Cluster)" } else { "Host Group" }
 
             Write-Verbose "Resolved Target '$TargetName' to $targetType ($targetId)"
 
