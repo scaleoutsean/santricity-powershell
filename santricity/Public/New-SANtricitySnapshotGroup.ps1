@@ -71,8 +71,9 @@ function New-SANtricitySnapshotGroup {
 
     Write-Verbose "Creating Snapshot Group '$Name' for Volume '$VolumeName' ($RepositoryPercentage% Repo)..."
 
-    # 4. Construct Payload (matches HAR capture /repositories/concat/single)
-    # The 'newVolCandidate' structure tells it to allocate new space.
+    # 4. Construct Payload
+    # We use the minimal payload structure which relies on the array to automatically
+    # select the repository location (usually same pool/group as base volume).
     $payload = @{
         baseMappableObjectId = $BaseVolumeId
         name = $Name
@@ -80,28 +81,8 @@ function New-SANtricitySnapshotGroup {
         warningThreshold = $WarningThreshold
         autoDeleteLimit = $AutoDeleteLimit
         fullPolicy = "purgepit" # "purge point-in-time" (auto-delete oldest)
-        repositoryCandidate = @{
-            candType = "newVolCandidate"
-            newVolCandidate = @{
-                candidateSelectionType = "freeExtent"
-                volumeCandidateData = @{
-                    diskPoolVolumeCandidateData = @{
-                        unusableCapacity = "0"
-                        reconstructionReservedAmt = "0"
-                        reconstructionReservedDriveCount = 0
-                    }
-                }
-            }
-        }
+        storagePoolId = $null   # Let array decide (usually implies same pool)
     }
-
-    # IMPORTANT: The HAR trace showed POST /repositories/concat/single for implicit creation,
-    # but standard docs often point to POST /snapshot-groups.
-    # We will try the standard endpoint first as it's cleaner, but if that fails regarding
-    # candidate allocation, we might need to be more specific.
-    #
-    # However, your notes show a payload for POST /snapshot-groups that includes 'repositoryCandidate'.
-    # This implies the standard endpoint handles allocation if you provide the candidate struct.
     
     return Invoke-SANtricityRequest -Method 'POST' -Path '/snapshot-groups' -Body $payload
 }

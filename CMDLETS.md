@@ -31,7 +31,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Show-SANtricityMappingsReportFormatted` | **Stable** | Formats report using PowerShellRich if available. |
 | `Get-SANtricityTargets` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
 | `Get-SANtricitySnapshotGroup` | **Beta** | Gets snapshot groups (repositories). Supports filter by Name/BaseVolume. |
-| `New-SANtricitySnapshotGroup` | **Beta** | Creates new snapshot group (repository). Supports BaseVolumeId or VolumeName. |
+| `New-SANtricitySnapshotGroup` | **Beta** | Creates snapshot groups/repositories (required for first snapshot). |
 
 ### Volume Management
 

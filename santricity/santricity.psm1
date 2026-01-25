@@ -515,6 +515,20 @@ function Invoke-SANtricityRequest {
                     if ($null -ne $bodyPayload -and -not ($bodyPayload -is [string])) {
                         $bodyPayload = $bodyPayload | ConvertTo-Json -Depth 32
                     }
+                    if ($bodyPayload) {
+                        # Redact sensitive data from logs
+                        $logPayload = $bodyPayload
+                        if ($logPayload -match 'password":\s*"[^"]+') {
+                           $logPayload = $logPayload -replace 'password":\s*"[^"]+', 'password": "REDACTED'
+                        }
+                        if ($logPayload -match 'currentPassword":\s*"[^"]+') {
+                           $logPayload = $logPayload -replace 'currentPassword":\s*"[^"]+', 'currentPassword": "REDACTED'
+                        }
+                        if ($logPayload -match 'newPassword":\s*"[^"]+') {
+                           $logPayload = $logPayload -replace 'newPassword":\s*"[^"]+', 'newPassword": "REDACTED'
+                        }
+                        Write-Verbose "Request Body: $logPayload"
+                    }
                     $restParams['Body'] = $bodyPayload
                     $restParams['ContentType'] = $ContentType
                 }
