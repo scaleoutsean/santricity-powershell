@@ -71,6 +71,18 @@ function New-SANtricityVolumeMapping {
             $VolumeId = $matched.id
         }
 
+        # Pre-check: Verify if volume is already mapped
+        # This avoids a 422 error from the array.
+        Write-Verbose "Checking for existing mappings for volume '$VolumeId'..."
+        $allMappings = Get-SANtricityVolumeMappings
+        $existing = $allMappings | Where-Object { $_.volumeRef -eq $VolumeId }
+        if ($existing) {
+            $msg = "Volume is already mapped to target '$($existing.mapRef)' (LUN $($existing.lun))."
+            # We could return the existing mapping, but since this is New-, throwing or warning is appropriate.
+            # User feedback suggests preventing the 422 is the goal.
+            throw $msg
+        }
+
         # 2. Resolve Target (if Name provided)
         # Note: We support HostName OR HostGroupName parameters to look up distinctly
         if ($PSBoundParameters.ContainsKey('HostName')) {
