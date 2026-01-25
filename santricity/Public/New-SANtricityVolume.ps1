@@ -159,7 +159,7 @@ function New-SANtricityVolume {
     $body = @{
         poolId = $SelectedPoolId
         name = $Name
-        sizeUnit = $SizeUnit
+        sizeUnit = $SizeUnit.ToLower()
         size = $Size
     }
     if ($PSBoundParameters.ContainsKey('SegSize')) {
