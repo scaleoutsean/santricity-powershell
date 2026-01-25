@@ -82,7 +82,7 @@ function Resize-SANtricityVolume {
         # 2. Build Body
         $body = @{
             expansionSize = $ExpansionSize
-            sizeUnit = $SizeUnit
+            sizeUnit = $SizeUnit.ToLower()
         }
 
         Write-Verbose "Resizing Volume $VolumeId expanding by $ExpansionSize $SizeUnit..."

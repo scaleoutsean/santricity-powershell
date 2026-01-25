@@ -32,6 +32,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Get-SANtricityTargets` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
 | `Get-SANtricitySnapshotGroup` | **Beta** | Gets snapshot groups (repositories). Supports filter by Name/BaseVolume. |
 | `New-SANtricitySnapshotGroup` | **Beta** | Creates snapshot groups/repositories (required for first snapshot). |
+| `New-SANtricitySnapshot` | **Beta** | Creates an instant snapshot. Auto-creates group if `-Force` is used. |
 
 ### Volume Management
 
