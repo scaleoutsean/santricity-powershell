@@ -16,19 +16,27 @@ function Get-SANtricitySnapshotImage {
     .PARAMETER BaseVolumeId
     Optional. Filter by the Base Volume ID.
 
+    .PARAMETER Newest
+    If specified, returns only the single most recent snapshot (based on pitTimestamp/pitSequenceNumber).
+
+    .PARAMETER Oldest
+    If specified, returns only the single oldest snapshot.
+
     .EXAMPLE
     Get-SANtricitySnapshotImage
     List all snapshot images.
 
     .EXAMPLE
-    Get-SANtricitySnapshotImage -GroupId "3300..."
-    List images belonging to a specific group.
+    Get-SANtricitySnapshotImage -GroupId "3300..." -Newest
+    Get the most recent snapshot for a specific group.
     #>
     [CmdletBinding()]
     param(
         [string]$Id,
         [string]$GroupId,
-        [string]$BaseVolumeId
+        [string]$BaseVolumeId,
+        [switch]$Newest,
+        [switch]$Oldest
     )
 
     if ($Id) {
@@ -45,6 +53,19 @@ function Get-SANtricitySnapshotImage {
 
     if ($BaseVolumeId) {
         $images = $images | Where-Object { $_.baseVol -eq $BaseVolumeId }
+    }
+
+    # Sorting Logic
+    if ($Newest -or $Oldest) {
+        # Sort by Sequence Number (reliable integer) or Timestamp
+        $sorted = $images | Sort-Object -Property pitSequenceNumber
+
+        if ($Oldest) {
+            return $sorted | Select-Object -First 1
+        }
+        if ($Newest) {
+            return $sorted | Select-Object -Last 1
+        }
     }
 
     return $images
