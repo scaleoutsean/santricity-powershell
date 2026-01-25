@@ -28,6 +28,7 @@ New-SANtricityVolumeMapping -VolumeName "Vol1" -HostName "ESX01"
 #>
 function New-SANtricityVolumeMapping {
     [CmdletBinding(DefaultParameterSetName="ById")]
+    [Alias("New-SANtricityHostMapping")]
     param (
         # Volume Identification
         [Parameter(Mandatory=$true, ParameterSetName="ById")]
@@ -78,7 +79,15 @@ function New-SANtricityVolumeMapping {
              $matchedH = $hosts | Where-Object { $_.name -eq $HostName -or $_.label -eq $HostName }
              if (-not $matchedH) { throw "Host '$HostName' not found." }
              if ($matchedH -is [array]) { throw "Multiple hosts matched '$HostName'." }
-             $TargetId = $matchedH.id
+             
+             # Check for Cluster Association
+             $zeroRef = "0" * 40
+             if ($matchedH.clusterRef -and $matchedH.clusterRef -ne $zeroRef) {
+                 Write-Warning "Host '$HostName' is part of a cluster/host-group ($($matchedH.clusterRef)). Mapping to the cluster instead."
+                 $TargetId = $matchedH.clusterRef
+             } else {
+                 $TargetId = $matchedH.id
+             }
         } elseif ($PSBoundParameters.ContainsKey('HostGroupName')) {
              Write-Verbose "Resolving Host Group Name '$HostGroupName'..."
              $groups = Get-SANtricityHostGroups
