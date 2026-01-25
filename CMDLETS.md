@@ -30,9 +30,6 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Get-SANtricityMappingsReport` | **Stable** | Aggregates data from multiple endpoints. |
 | `Show-SANtricityMappingsReportFormatted` | **Stable** | Formats report using PowerShellRich if available. |
 | `Get-SANtricityTargets` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
-| `Get-SANtricitySnapshotGroup` | **Beta** | Gets snapshot groups (repositories). Supports filter by Name/BaseVolume. |
-| `New-SANtricitySnapshotGroup` | **Beta** | Creates snapshot groups/repositories (required for first snapshot). |
-| `New-SANtricitySnapshot` | **Beta** | Creates an instant snapshot. Auto-creates group if `-Force` is used. |
 
 ### Volume Management
 
@@ -41,9 +38,9 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `New-SANtricityVolume` | **Beta** | Includes `-Auto` pool selection logic. Needs integration testing. |
 | `Set-SANtricityVolume` | **Beta** | Implements renaming, cache/scan settings, and generic property merging. |
 | `Resize-SANtricityVolume` | **Beta** | Implements `/expand` endpoint. |
-| `New-SANtricityVolumeMapping` | **Beta** | Implements mapping creation with name resolution. |
-| `Remove-SANtricityVolume` | **Beta** | Checks for mappings before deletion (requires -Force). |
-| `Remove-SANtricityVolumeMapping` | **Beta** | Implements removal with volume/target name resolution and collision protection. |
+| `New-SANtricityVolumeMapping` | **Stable** | Implements mapping creation. Auto-detects Clusters and maps to ClusterRef. |
+| `Remove-SANtricityVolume` | **Stable** | Checks for mappings before deletion (requires -Force). |
+| `Remove-SANtricityVolumeMapping` | **Stable** | Implements removal with volume/target name resolution. |
 
 ### Host Management
 
@@ -53,6 +50,20 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `New-SANtricityHostGroup` | **Beta** | Basic wrapper. |
 | `Remove-SANtricityHost` | **Beta** | Safe deletion: checks for mappings first. |
 | `Remove-SANtricityHostGroup` | **Beta** | Safe deletion: checks for member hosts and mappings first. |
+
+### Snapshot & Clone Management
+
+| Cmdlet | Status | Notes |
+|--------|--------|-------|
+| `Get-SANtricitySnapshotGroup` | **Stable** | Gets snapshot groups. Supports filter by Name/BaseVolume. |
+| `New-SANtricitySnapshotGroup` | **Stable** | Creates snapshot groups. |
+| `New-SANtricitySnapshot` | **Stable** | Creates instant snapshot. Auto-creates group if `-Force` is used. |
+| `Get-SANtricitySnapshotImage` | **Stable** | Lists snapshots. Supports `-Newest`/`-Oldest` sorting. |
+| `Remove-SANtricitySnapshotImage` | **Stable** | Deletes snapshots. Supports `-Oldest` deletion strategy. |
+| `Get-SANtricityClone` | **Stable** | Lists clones/views. |
+| `New-SANtricityClone` | **Stable** | Creates clone. Defaults to Read-Only (View). |
+| `Update-SANtricityClone` | **Stable** | Refreshes clone data from source snapshot (Re-Flash). |
+| `Remove-SANtricityClone` | **Stable** | Deletes clone and stops associated views. |
 
 ### Pool Management
 
