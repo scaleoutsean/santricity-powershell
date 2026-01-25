@@ -30,7 +30,7 @@ Segment size in KiB. Optional. Only applying to standard pools (diskPool=false).
 Enables Data Assurance (DA).
 
 .PARAMETER RaidLevel
-Required RAID level (raid1, raid5, raid6, raid0). Important for Auto selection and validation.
+Required RAID level (raid1, raid5, raid6, raid0). Important for Auto selection and validation. DDP pools support raid1 and raid6.
 
 .PARAMETER MetaTags
 Array of Key/Value pairs for metadata.
@@ -43,7 +43,7 @@ New-SANtricityVolume -PoolName "Pool1" -Name "Vol1" -Size 10 -SizeUnit gb
 New-SANtricityVolume -Auto -RaidLevel raid6 -Name "Vol2" -Size 100 -SizeUnit gb
 #>
 function New-SANtricityVolume {
-    [CmdletBinding(DefaultParameterSetName="ById")]
+    [CmdletBinding(DefaultParameterSetName="Auto")]
     param (
         [Parameter(Mandatory=$true, ParameterSetName="ById")]
         [string]$PoolId,
@@ -51,7 +51,7 @@ function New-SANtricityVolume {
         [Parameter(Mandatory=$true, ParameterSetName="ByName")]
         [string]$PoolName,
 
-        [Parameter(Mandatory=$true, ParameterSetName="Auto")]
+        [Parameter(Mandatory=$false, ParameterSetName="Auto")]
         [switch]$Auto,
 
         [Parameter(Mandatory=$true)]
@@ -148,10 +148,20 @@ function New-SANtricityVolume {
             $candidates = $raidCandidates
         }
 
-        # 4. Tie-breaker: Select pool with MOST free space
-        $SelectedPool = $candidates | Sort-Object -Property { [int64]$_.freeSpace } -Descending | Select-Object -First 1
+        # 4. Strict Selection: Prefer DDP, Fail if ambiguous
+        $ddpCandidates = $candidates | Where-Object { $_.diskPool -eq $true }
+
+        if ($candidates.Count -eq 1) {
+            $SelectedPool = $candidates[0]
+        } elseif ($ddpCandidates.Count -eq 1) {
+            $SelectedPool = $ddpCandidates[0]
+            Write-Verbose "Multiple candidate pools found, but only one DDP ($($SelectedPool.label)). Selected DDP as target."
+        } else {
+            $names = $candidates.label -join ', '
+            throw "Automatic pool selection failed: Ambiguous match. Multiple suitable pools found ($names). Please specify -PoolName or -PoolId."
+        }
         
-        Write-Verbose "Auto-selected pool: $($SelectedPool.label) ($($SelectedPool.id)) with $($SelectedPool.freeSpace) bytes free."
+        Write-Verbose "Auto-selected pool: $($SelectedPool.label) ($($SelectedPool.id))"
         $SelectedPoolId = $SelectedPool.id
     }
 
