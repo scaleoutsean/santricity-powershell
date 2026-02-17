@@ -1,10 +1,12 @@
-Santricity PowerShell helper
+[![PowerShell Tests](https://github.com/scaleoutsean/santricity-powershell/actions/workflows/powershell.yml/badge.svg)](https://github.com/scaleoutsean/santricity-powershell/actions/workflows/powershell.yml)
+
+SANtricity PowerShell helper
 =================================
 
 Minimal PowerShell 7 module providing lightweight helpers to call a SANtricity
 REST API and produce a mappings report similar to the Python client (`santricity-client`).
 
-It has been tested with PowerShell 7.5 and 7.6 (Preview 6).
+It has been tested with PowerShell 7.5 and 7.6 (Preview 6). It is aimed at Day 1+ operations on DDP (pools) to avoid the complexity of RAID groups.
 
 Usage (PowerShell 7):
 
