@@ -11,6 +11,11 @@ It has been tested with PowerShell 7.5 and 7.6 (Preview 6). It is aimed at Day 1
 Usage (PowerShell 7):
 
 ```powershell
+https://github.com/scaleoutsean/santricity-powershell
+cd santricity-powershell
+# Optional; if you don't want to install in standard location
+# git clone https://github.com/dfinke/PowerShellRich
+
 Import-Module ./santricity/santricity.psd1 -Force
 # Optional rich tables (git clone https://github.com/dfinke/PowerShellRich.git)
 Import-Module ./PowerShellRich/PowerShellRich.psd1 -ErrorAction SilentlyContinue
@@ -23,6 +28,8 @@ $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin
 
 Get-SANtricityVolumes -Verbose
 Get-SANtricityMappingsReport | Format-Table -AutoSize
+
+Get-Command -Module santricity
 ```
 
 > **TLS note:** provide `-TrustedCertificate /path/chain.pem` with either a controller certificate or a custom CA bundle to enable pinned TLS. The module automatically routes requests through the legacy HttpClient pipeline in that case, so you only need `-VerifySsl:$false` for quick lab testing.

@@ -16,8 +16,8 @@ function Show-SANtricityMappingsReportFormatted {
     Show-SANtricityMappingsReportFormatted
     #>
 
-    if (-not $report -or $report.Count -eq 0) {
-        if (Get-Module -Name PowerShellRich -ListAvailable -ErrorAction SilentlyContinue) {
+    if ($report.Count -eq 0) {
+        if (Get-Module -Name PowerShellRich) {
             Write-Rich "No mappings found."
         } else {
             Write-Output "No mappings found."
@@ -37,7 +37,7 @@ function Show-SANtricityMappingsReportFormatted {
         )
     }
 
-    if (Get-Module -Name PowerShellRich -ListAvailable -ErrorAction SilentlyContinue) {
+    if (Get-Module -Name PowerShellRich) {
         $table = New-RichTable -Columns $cols -Rows $rows -Title 'SANtricity Mappings' -HeaderStyle 'bold cyan' -BorderStyle 'dim white'
         Write-Rich $table
     } else {
