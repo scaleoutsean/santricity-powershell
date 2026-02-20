@@ -26,8 +26,8 @@ function Show-SANtricityMappingsReportFormatted {
     }
 
     $cols = @('mappingRef','mappableObjectName','capacity','poolName','poolFreeSpace','targetLabel')
-    $rows = foreach ($r in $report) {
-        @(
+    $rows = @(foreach ($r in $report) {
+        ,@(
             ($r.mappingRef -as [string]),
             ($r.mappableObjectName -as [string]),
             ($r.capacity -as [string]),
@@ -35,7 +35,7 @@ function Show-SANtricityMappingsReportFormatted {
             ($r.poolFreeSpace -as [string]),
             ($r.targetLabel -as [string])
         )
-    }
+    })
 
     if (Get-Module -Name PowerShellRich) {
         $table = New-RichTable -Columns $cols -Rows $rows -Title 'SANtricity Mappings' -HeaderStyle 'bold cyan' -BorderStyle 'dim white'
