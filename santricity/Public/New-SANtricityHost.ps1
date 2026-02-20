@@ -67,7 +67,7 @@ function New-SANtricityHost {
                 } elseif ($p.StartsWith("nqn.", [System.StringComparison]::InvariantCultureIgnoreCase)) {
                     $type = "nvmeof" 
                 } else {
-                    $type = "iscsi" # Default to iSCSI as per user environment preference
+                    $type = "iscsi" # Default to iSCSI as per common preference
                 }
 
                 $portObj = [ordered]@{
@@ -78,6 +78,8 @@ function New-SANtricityHost {
 
                 if ($type -eq "iscsi" -and -not [string]::IsNullOrWhiteSpace($ChapSecret)) {
                     $portObj["iscsiChapSecret"] = $ChapSecret
+                } elseif ($type -ne "iscsi" -and -not [string]::IsNullOrWhiteSpace($ChapSecret)) {
+                    Write-Warning "CHAP Secret provided but port '$p' is not iSCSI ($type). Ignoring secret."
                 }
                 
                 $portsList += $portObj

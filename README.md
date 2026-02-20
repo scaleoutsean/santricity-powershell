@@ -27,6 +27,8 @@ $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-or-ca-chain.pem' -Verbose
 
 Get-SANtricityVolumes -Verbose
+Get-SANtricityVolumes -Size "100GB"
+
 Get-SANtricityMappingsReport | Format-Table -AutoSize
 
 Get-Command -Module santricity
