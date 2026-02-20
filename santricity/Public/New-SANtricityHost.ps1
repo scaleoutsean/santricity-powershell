@@ -10,7 +10,7 @@ The name of the new Host.
 
 .PARAMETER Port
 One or more port identifiers (IQN, WWN, or NQN) to associate with this host.
-If provided, the port type is inferred from the format (iqn.*/eui.* -> iscsi, nqn.* -> nvme, else -> iscsi).
+If provided, the port type is inferred from the format (iqn.*/eui.* -> iscsi, nqn.* -> nvmeof, else -> iscsi).
 
 .PARAMETER HostTypeIndex
 The operating system type index for the host (default: 28 for Linux).
@@ -65,7 +65,7 @@ function New-SANtricityHost {
                     $p.StartsWith("eui.", [System.StringComparison]::InvariantCultureIgnoreCase)) {
                     $type = "iscsi"
                 } elseif ($p.StartsWith("nqn.", [System.StringComparison]::InvariantCultureIgnoreCase)) {
-                    $type = "nvme" 
+                    $type = "nvmeof" 
                 } else {
                     $type = "iscsi" # Default to iSCSI as per user environment preference
                 }

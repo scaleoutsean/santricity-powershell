@@ -46,7 +46,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 
 | Cmdlet | Status | Notes |
 |--------|--------|-------|
-| `New-SANtricityHost` | **Beta** | Supports auto-port labelling and type inference (iSCSI/NVMe/FC). |
+| `New-SANtricityHost` | **Beta** | Supports auto-port labelling and type inference (tested with iSCSI, NVMe/RoCE). |
 | `New-SANtricityHostGroup` | **Beta** | Basic wrapper. |
 | `Remove-SANtricityHost` | **Beta** | Safe deletion: checks for mappings first. |
 | `Remove-SANtricityHostGroup` | **Beta** | Safe deletion: checks for member hosts and mappings first. |
