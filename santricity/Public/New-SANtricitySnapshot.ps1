@@ -28,6 +28,10 @@ function New-SANtricitySnapshot {
     .EXAMPLE
     New-SANtricitySnapshot -VolumeName "new_vol" -Force
     Creating a new group/repo and then taking the first snapshot.
+
+    .EXAMPLE
+    New-SANtricitySnapshot -ConsistencyGroup "OracleCG"
+    Taking a snapshot of an entire Consistency Group.
     #>
     [CmdletBinding(DefaultParameterSetName = 'Default')]
     param(
@@ -37,10 +41,44 @@ function New-SANtricitySnapshot {
         [Parameter(ParameterSetName = 'ByVolumeName', Mandatory = $true)]
         [string]$VolumeName,
 
+        [Parameter(ParameterSetName = 'ByConsistencyGroup', Mandatory = $true)]
+        [string]$ConsistencyGroup,
+
         [switch]$Force,
         
         [int]$RepositoryPercentage = 20
     )
+
+    # ----------------------------
+    # Scenario A: Consistency Group Snapshot
+    # ----------------------------
+    if ($PSCmdlet.ParameterSetName -eq 'ByConsistencyGroup') {
+        # 1. Resolve CG (Try Name first, then ID)
+        $cgParam = $ConsistencyGroup
+        
+        # Try assuming it's a Name
+        $cg = Get-SANtricityConsistencyGroup -Name $cgParam
+        
+        if (-not $cg) {
+            # Try assuming it's an ID
+            try {
+                $cg = Get-SANtricityConsistencyGroup -Id $cgParam -ErrorAction Stop
+            } catch {
+                $cg = $null
+            }
+        }
+        
+        if (-not $cg) { throw "Consistency Group '$cgParam' not found." }
+
+        Write-Verbose "Creating snapshot for Consistency Group '$($cg.name)'..."
+        
+        # Endpoint: POST /consistency-groups/{cg-id}/snapshots
+        return Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/snapshots"
+    }
+
+    # ----------------------------
+    # Scenario B: Single Volume Snapshot
+    # ----------------------------
 
     # 1. Resolve Volume Name to ID if needed
     if ($PSCmdlet.ParameterSetName -eq 'ByVolumeName') {

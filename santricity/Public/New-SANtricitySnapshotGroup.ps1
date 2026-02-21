@@ -5,8 +5,10 @@ function New-SANtricitySnapshotGroup {
     Create a new snapshot group for a base volume.
 
     .DESCRIPTION
-    Allocates a new repository volume and creates a snapshot group (Consistency Group)
-    for the specified base volume. This is required before taking the first snapshot.
+    Allocates a new repository volume and creates a snapshot group (for a single base volume).
+    This is required before taking the first snapshot of that volume.
+    
+    Note: For multi-volume consistency, use New-SANtricityConsistencyGroup (creating a group for multiple volumes).
 
     .PARAMETER BaseVolumeId
     The unique identifier (Ref) of the base volume to protect.

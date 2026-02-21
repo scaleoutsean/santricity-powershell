@@ -1,0 +1,126 @@
+function New-SANtricityConsistencyGroup {
+    <#
+    .SYNOPSIS
+    Creates a new multi-volume Consistency Group (CG).
+
+    .DESCRIPTION
+    Creates a Consistency Group (CG) which is a container for multiple snapshot volumes (Snapshot Groups)
+    that can be snapshotted atomically (e.g. for database log+data consistency).
+    
+    You can specify one or more member volumes to add immediately upon creation.
+    When adding members, repository volumes are automatically created for each member.
+
+    .PARAMETER Name
+    The name of the new Consistency Group.
+
+    .PARAMETER VolumeId
+    Array of volume IDs (Refs) to add as members immediately. Optional.
+
+    .PARAMETER VolumeName
+    Array of volume names to add as members immediately. Normalized to IDs internally.
+
+    .PARAMETER RepositoryPercentage
+    Percentage of each base volume capacity to allocate for its repository (default 20).
+    Only used if member volumes are specified.
+
+    .PARAMETER WarningThreshold
+    Warning threshold for repository utilization (default 80).
+    Only used if member volumes are specified.
+    
+    .PARAMETER AutoDeleteLimit
+    Number of snapshots to keep (default 30).
+    Only used if member volumes are specified.
+
+    .EXAMPLE
+    New-SANtricityConsistencyGroup -Name "OracleCG" -VolumeName "DataVol","LogVol"
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [string]$Name,
+
+        [Parameter(ParameterSetName = 'Default')]
+        [string[]]$VolumeId,
+
+        [Parameter(ParameterSetName = 'ByVolumeName')]
+        [string[]]$VolumeName,
+
+        [int]$RepositoryPercentage = 20,
+        [int]$WarningThreshold = 80,
+        [int]$AutoDeleteLimit = 30
+    )
+
+    process {
+        # 1. Resolve Volumes
+        $ResolvedVolumeIds = @()
+
+        if ($PSCmdlet.ParameterSetName -eq 'ByVolumeName' -and $VolumeName) {
+            foreach ($vn in $VolumeName) {
+                $vol = Get-SANtricityVolumes | Where-Object { $_.label -eq $vn }
+                if (-not $vol) {
+                    throw "Volume with name '$vn' not found."
+                }
+                $ResolvedVolumeIds += $vol.id
+            }
+        } elseif ($VolumeId) {
+            $ResolvedVolumeIds = $VolumeId
+        }
+
+        # 2. Check Exists
+        $existing = Get-SANtricityConsistencyGroup -Name $Name
+        if ($existing) {
+            Write-Warning "Consistency Group '$Name' already exists."
+            return $existing
+        }
+        
+        # 3. Create Empty CG (Endpoint: /consistency-groups)
+        # Payload only requires name, fullPolicy, etc.
+        $cgPayload = @{
+            name = $Name
+            fullPolicy = "purgepit" # Default behavior for CGs too
+            rollbackPriority = "highest" # Default priority for rollbacks
+        }
+
+        Write-Verbose "Creating empty Consistency Group '$Name'..."
+        $cg = Invoke-SANtricityRequest -Method 'POST' -Path '/consistency-groups' -Body $cgPayload
+        
+        if (-not $cg) { throw "Failed to create Consistency Group." }
+
+        # 4. Add Member Volumes (if any)
+        # Endpoint: /consistency-groups/{id}/member-volumes
+        if ($ResolvedVolumeIds.Count -gt 0) {
+            Write-Verbose "Adding $($ResolvedVolumeIds.Count) member volumes to CG '$Name'..."
+            
+            # Prepare batch payload
+            # Based on typical API behavior for batch endpoints, it's an array of objects.
+            $batchPayload = @()
+            foreach ($vid in $ResolvedVolumeIds) {
+                $batchPayload += @{
+                    baseMappableObjectId = $vid
+                    repositoryPercentage = $RepositoryPercentage
+                    warningThreshold = $WarningThreshold
+                    autoDeleteLimit = $AutoDeleteLimit
+                }
+            }
+            
+            # Some versions use /batch suffix, others accept array on main resource.
+            # We try the specific batch endpoint first as it was identified in exploration.
+            $batchUri = "/consistency-groups/$($cg.id)/member-volumes/batch"
+            
+            try {
+                Invoke-SANtricityRequest -Method 'POST' -Path $batchUri -Body $batchPayload
+            } catch {
+                Write-Warning "Batch add failed ($_). Attempting individual adds..."
+                foreach ($item in $batchPayload) {
+                    try {
+                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $item
+                    } catch {
+                        Write-Error "Failed to add volume $($item.baseMappableObjectId) to CG: $_"
+                    }
+                }
+            }
+        }
+        
+        return Get-SANtricityConsistencyGroup -Id $cg.id
+    }
+}

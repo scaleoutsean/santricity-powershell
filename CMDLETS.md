@@ -55,15 +55,21 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 
 | Cmdlet | Status | Notes |
 |--------|--------|-------|
-| `Get-SANtricitySnapshotGroup` | **Stable** | Gets snapshot groups. Supports filter by Name/BaseVolume. |
+| `Get-SANtricitySnapshotGroup` | **Stable** | Gets snapshot groups (single volume). Supports filter by Name/BaseVolume. |
 | `New-SANtricitySnapshotGroup` | **Stable** | Creates snapshot groups. |
-| `New-SANtricitySnapshot` | **Stable** | Creates instant snapshot. Auto-creates group if `-Force` is used. |
+| `New-SANtricitySnapshot` | **Stable** | Creates instant snapshot. Auto-creates group if `-Force` is used. Supports Consistency Groups. |
 | `Get-SANtricitySnapshotImage` | **Stable** | Lists snapshots. Supports `-Newest`/`-Oldest` sorting. |
 | `Remove-SANtricitySnapshotImage` | **Stable** | Deletes snapshots. Supports `-Oldest` deletion strategy. |
 | `Get-SANtricityClone` | **Stable** | Lists clones/views. |
 | `New-SANtricityClone` | **Stable** | Creates clone. Defaults to Read-Only (View). |
 | `Update-SANtricityClone` | **Stable** | Refreshes clone data from source snapshot (Re-Flash). |
 | `Remove-SANtricityClone` | **Stable** | Deletes clone and stops associated views. |
+| `New-SANtricityVolumeCopy` | **Beta** | Creates full physical copy. Supports `-OnlineCopy` and `RespositoryPercentage`. |
+| `Get-SANtricityVolumeCopy` | **Beta** | Gets copy config or live progress (`-Progress`). |
+| `Stop-SANtricityVolumeCopy` | **Beta** | Aborts running copy jobs. |
+| `Get-SANtricityConsistencyGroup` | **Beta** | Lists multi-volume consistency groups. |
+| `New-SANtricityConsistencyGroup` | **Beta** | Creates consistency groups with batch member addition. |
+| `Remove-SANtricityConsistencyGroup` | **Beta** | Deletes consistency groups and member snapshot groups. |
 
 ### Pool Management
 
