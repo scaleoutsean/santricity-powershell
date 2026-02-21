@@ -108,9 +108,18 @@ function New-SANtricityConsistencyGroup {
             
             if (-not $cg) { throw "Failed to create Consistency Group." }
             
-            # Ensure $cg is a single object (POST usually returns 1, but be safe)
-            if ($cg.Count -and $cg.Count -gt 1) {
-                 $cg = $cg | Select-Object -First 1
+            # The API returns a single object on POST.
+            # But just in case invoke-request wraps it or returns list, we handle it.
+            if ($null -ne $cg -and $cg.GetType().IsArray) {
+                 # The API might return an array with nulls, e.g. [null, null, object] or just [object]
+                 # Filter for the first non-null object with an ID
+                 $validObjs = @($cg) | Where-Object { $null -ne $_ -and $null -ne $_.id }
+                 if ($validObjs.Count -gt 0) {
+                     $cg = $validObjs[0]
+                 } else {
+                     # Fallback to pure index 0 if filtering failed, though likely doomed
+                     $cg = $cg[0]
+                 }
             }
         }
 
