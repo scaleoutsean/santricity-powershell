@@ -17,7 +17,7 @@
 # Configuration
 $ControllerUrl = "https://192.168.1.100:8443"
 $User          = "admin"
-$Pass          = "admin"
+$Pass          = "" # error: GH013: Repository rule violations found for refs/heads/master (sigh...)
 $SourceVolName = "Production_DB_Data"
 $TargetVolName = "DevTest_DB_Data"
 $WebhookUrl    = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
