@@ -32,11 +32,18 @@ function Remove-SANtricityConsistencyGroup {
                 Write-Warning "Consistency Group '$Name' not found."
                 return
             }
+            if ($cg.Count -gt 1) {
+                Write-Warning "Multiple Consistency Groups found with name '$Name'. Please remove by ID."
+                return
+            }
             $Id = $cg.id
-        }
-
-        if ($PSCmdlet.ShouldProcess("Consistency Group $Id", "Delete")) {
-            Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id"
+            if ($PSCmdlet.ShouldProcess("Consistency Group '$Name' ($Id)", "Delete")) {
+                Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id"
+            }
+        } elseif ($PSCmdlet.ParameterSetName -eq "ById") {
+            if ($PSCmdlet.ShouldProcess("Consistency Group ID $Id", "Delete")) {
+                Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id"
+            }
         }
     }
 }

@@ -26,15 +26,6 @@ function Get-SANtricityConsistencyGroup {
     # We always list all because looking up by ID via /member-volumes is unreliable for checking CG properties/existence.
     $allGroups = Invoke-SANtricityRequest -Method 'GET' -Path '/consistency-groups'
     
-    # DEBUG: Inspect the response to understand why discovery fails
-    Write-Host "DEBUG: Type of `$allGroups is $($allGroups.GetType().FullName)"
-    Write-Host "DEBUG: Count of `$allGroups is $($allGroups.Count)"
-    if ($allGroups) {
-        Write-Host "DEBUG: First item: $($allGroups | Select-Object -First 1 | ConvertTo-Json -Depth 2 -Compress)"
-    } else {
-        Write-Host "DEBUG: `$allGroups is null or empty"
-    }
-
     if (-not $allGroups) { return $null }
 
     if ($Id) {
