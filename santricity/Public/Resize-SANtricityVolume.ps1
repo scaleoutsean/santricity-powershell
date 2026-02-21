@@ -4,7 +4,7 @@ Resize (expand) an existing volume.
 
 .DESCRIPTION
 Increases the size of a volume. Note that SANtricity volume expansion is one-way (increase only).
-Currently, this cmdlet expects you to provide the amount of space to ADD (ExpansionSize).
+Currently, despite the API field name, this cmdlet expects you to provide the NEW TOTAL SIZE.
 
 .PARAMETER VolumeId
 The ID of the volume to resize.
@@ -12,15 +12,15 @@ The ID of the volume to resize.
 .PARAMETER VolumeName
 The name of the volume to resize.
 
-.PARAMETER ExpansionSize
-The amount of capacity to ADD to the volume (Delta).
+.PARAMETER Size
+The new TOTAL size of the volume.
 
 .PARAMETER SizeUnit
 Unit for the size (gb, tb, mb).
 
 .EXAMPLE
-Resize-SANtricityVolume -VolumeName "Vol1" -ExpansionSize 10 -SizeUnit "gb"
-Adds 10GB to the volume.
+Resize-SANtricityVolume -VolumeName "Vol1" -Size 100 -SizeUnit "gb"
+Resizes Vol1 to 100GB total.
 #>
 function Resize-SANtricityVolume {
     [CmdletBinding(DefaultParameterSetName="ById")]
@@ -33,8 +33,9 @@ function Resize-SANtricityVolume {
         [string]$VolumeName,
 
         # Size
-        [Parameter(Mandatory=$true)]
-        [int64]$ExpansionSize,
+        [Parameter(Mandatory=$true, Position=1)]
+        [Alias("TotalSize","NewSize")]
+        [int64]$Size,
 
         [Parameter(Mandatory=$true)]
         [ValidateSet("bytes","mb","gb","tb")]
@@ -64,11 +65,11 @@ function Resize-SANtricityVolume {
 
         # 2. Build Body
         $body = @{
-            expansionSize = $ExpansionSize
+            expansionSize = $Size
             sizeUnit = $SizeUnit.ToLower()
         }
 
-        Write-Verbose "Resizing Volume $VolumeId expanding by $ExpansionSize $SizeUnit..."
+        Write-Verbose "Resizing (Expanding) Volume $VolumeId to new total size $Size $SizeUnit..."
         
         # 3. Call API
         return Invoke-SANtricityRequest -Method 'POST' -Path "/volumes/$VolumeId/expand" -Body $body
