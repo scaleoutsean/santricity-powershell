@@ -144,7 +144,7 @@ function New-SANtricityConsistencyGroup {
                 
                 for ($i = 0; $i -lt $maxRetries; $i++) {
                     try {
-                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$targetId/member-volumes" -Body $payload -ErrorAction Stop
+                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$targetId/member-volumes" -Body $payload -ErrorAction Stop | Out-Null
                         $success = $true
                         break
                     } catch {
