@@ -97,7 +97,6 @@ function New-SANtricityConsistencyGroup {
         }
 
         # 4. Add Member Volumes (if any)
-        # 4. Add Member Volumes (if any)
         if ($ResolvedVolumeIds.Count -gt 0) {
             Write-Verbose "Adding $($ResolvedVolumeIds.Count) member volumes to CG '$Name'..."
             
@@ -131,7 +130,6 @@ function New-SANtricityConsistencyGroup {
         }
         
         # Return the object we already have/updated (no need to re-fetch if we trust $cg or refreshed it)
-        # But to be safe and get the latest state including member counts:
         return Get-SANtricityConsistencyGroup -Id $cg.id
     }
 }

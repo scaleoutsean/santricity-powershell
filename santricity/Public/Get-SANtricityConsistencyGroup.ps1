@@ -22,22 +22,20 @@ function Get-SANtricityConsistencyGroup {
         [string]$Name
     )
 
-    if ($Id) {
-        # Retrieve all groups and filter by ID to ensure consistent object structure
-        # (Direct endpoint can sometimes behave inconsistently regarding list wrapping)
-        $allGroups = Invoke-SANtricityRequest -Method 'GET' -Path '/consistency-groups'
-        if (-not $allGroups) { return $null }
-
-        return $allGroups | Where-Object { $_.id -eq $Id } | Select-Object -First 1
-    }
-
+    # Retrieve all consistency groups first.
+    # We always list all because looking up by ID via /member-volumes is unreliable for checking CG properties/existence.
     $allGroups = Invoke-SANtricityRequest -Method 'GET' -Path '/consistency-groups'
     
     if (-not $allGroups) { return $null }
+
+    if ($Id) {
+        $allGroups = $allGroups | Where-Object { $_.id -eq $Id }
+    }
 
     if ($Name) {
         $allGroups = $allGroups | Where-Object { $_.name -eq $Name }
     }
 
     return $allGroups
+
 }
