@@ -23,7 +23,11 @@ function Get-SANtricityConsistencyGroup {
     )
 
     if ($Id) {
-        return Invoke-SANtricityRequest -Method 'GET' -Path "/consistency-groups/$Id"
+        $result = Invoke-SANtricityRequest -Method 'GET' -Path "/consistency-groups/$Id"
+        if ($result -is [array]) {
+            return $result | Select-Object -First 1
+        }
+        return $result
     }
 
     $allGroups = Invoke-SANtricityRequest -Method 'GET' -Path '/consistency-groups'

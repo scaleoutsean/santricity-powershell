@@ -130,6 +130,10 @@ function New-SANtricityConsistencyGroup {
             }
         }
         
-        return Get-SANtricityConsistencyGroup -Id $cg.id
+        $finalCg = Get-SANtricityConsistencyGroup -Id $cg.id
+        if ($finalCg -is [array]) {
+            return $finalCg | Select-Object -First 1
+        }
+        return $finalCg
     }
 }
