@@ -87,7 +87,7 @@ function New-SANtricityConsistencyGroup {
         if (-not $cg) { throw "Failed to create Consistency Group." }
 
         # 4. Add Member Volumes (if any)
-        # Endpoint: /consistency-groups/{id}/member-volumes
+        # 4. Add Member Volumes (if any)
         if ($ResolvedVolumeIds.Count -gt 0) {
             Write-Verbose "Adding $($ResolvedVolumeIds.Count) member volumes to CG '$Name'..."
             
@@ -103,8 +103,7 @@ function New-SANtricityConsistencyGroup {
                 }
             }
             
-            # Some versions use /batch suffix, others accept array on main resource.
-            # We try the specific batch endpoint first as it was identified in exploration.
+            # Try batch first (some firmware versions support simple array body)
             $batchUri = "/consistency-groups/$($cg.id)/member-volumes/batch"
             
             try {
