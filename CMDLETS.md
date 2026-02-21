@@ -67,6 +67,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `New-SANtricityVolumeCopy` | **Beta** | Creates full physical copy. Supports `-OnlineCopy` and `RespositoryPercentage`. |
 | `Get-SANtricityVolumeCopy` | **Beta** | Gets copy config or live progress (`-Progress`). |
 | `Stop-SANtricityVolumeCopy` | **Beta** | Aborts running copy jobs. |
+| `Remove-SANtricityVolumeCopy` | **Beta** | Deletes the volume copy pair relationship. |
 | `Get-SANtricityConsistencyGroup` | **Beta** | Lists multi-volume consistency groups. |
 | `New-SANtricityConsistencyGroup` | **Beta** | Creates consistency groups with batch member addition. |
 | `Remove-SANtricityConsistencyGroup` | **Beta** | Deletes consistency groups and member snapshot groups. |
