@@ -42,49 +42,13 @@ function Update-SANtricityClone {
         $Id = $clone.id
     }
 
-    # The workflow requires interacting with the 'symbol' endpoint (low-level commands)
-    # Based on HAR analysis:
-    # 1. stopPITView takes a RAW STRING payload (the viewRef ID), NOT a JSON object.
-    #    Invoke-SANtricityRequest usually auto-JSON-encodes. We might need to handle this manually 
-    #    or trick the cmdlet. If Invoke-SANtricityRequest enforces JSON, this specific call might fail
-    #    unless we update the Invoke helper or use a raw web request.
-    
-    # Let's try to see if Invoke-SANtricityRequest can handle a string body directly without JSON encoding
-    # if it's already a string.
-    
+    # 1. Stop the current PIT View
+    # The API expects the ViewRef ID as a simple JSON string (e.g. "3500...")
     Write-Verbose "Stopping PIT View for Clone '$Id'..."
-    
-    # According to HAR: "text": "350000..." (just the ID)
-    # The error 422 previously encountered with `{ "viewRef": "..." }` confirms the object format was rejected.
-    
-    # We will pass the ID as the body. Invoke-SANtricityRequest's behavior with string body needs to be verified.
-    # Assuming Invoke-SANtricityRequest converts body to JSON using ConvertTo-Json if it's not a string.
-    # If it Is a string, it might just send it? 
-    # Let's double check `santricity.psm1` logic if possible, but as a quick fix, we force the string.
-    # Wait, Invoke-SANtricityRequest usually sets Content-Type to application/json.
-    # Sending a raw string with application/json is technically valid JSON if quoted, but the API might want
-    # *just* the characters? 
-    # "text": "3500..." implies the HTTP body was literally 3500... 
-    # BUT if Content-Type was application/json, that would be invalid unless it was "3500...".
-    #
-    # Actually, looking at typical SYMbol behavior, it's often weird.
-    # However, since we cannot easily change Invoke-SANtricityRequest right now without risking other things,
-    # let's try passing the ID in quotes to mimic a JSON string, OR just the ID.
-    
-    # Let's assume the previous failure was purely because we sent an Object `{ viewRef: ... }` 
-    # when it expected a String "..." (JSON string) or just raw text.
-    
-    # Let's try sending the simple string. 
-    # If Invoke-SANtricityRequest performs `ConvertTo-Json $Body`, then a string input "ABC" becomes "\"ABC\"".
-    # If the API expects the ID in quotes (JSON String), this works.
-    # If the API expects RAW text (no quotes), we have a problem with Invoke-SANtricityRequest.
-    
-    # Given the previous error "422" with an object, it's highly likely it rejected the schema.
-    
-    $stopResult = Invoke-SANtricityRequest -Method 'POST' -Path '/symbol/stopPITView' -Body $Id
+    $null = Invoke-SANtricityRequest -Method 'POST' -Path '/symbol/stopPITView' -Body $Id
 
     # 2. Restart the PIT View with new BasePIT
-    # HAR confirms this one IS a standard JSON object.
+    # The API expects a JSON object with viewRef and basePIT
     Write-Verbose "Restarting PIT View to Snapshot Image '$SnapshotImageId'..."
     
     $restartBody = @{

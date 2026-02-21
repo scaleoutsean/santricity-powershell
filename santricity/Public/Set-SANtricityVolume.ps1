@@ -10,7 +10,7 @@ Supports merging arbitrary properties via -ExtraProperties for advanced usage.
 The ID (Ref) of the volume to update.
 
 .PARAMETER VolumeName
-The name of the volume to update (resolves to ID).
+The name of the volume to update (internally resolves to volume ID (volumeRef)).
 
 .PARAMETER NewName
 The new name for the volume.

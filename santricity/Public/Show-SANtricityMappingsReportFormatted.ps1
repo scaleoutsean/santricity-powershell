@@ -1,9 +1,19 @@
 
 function Show-SANtricityMappingsReportFormatted {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+        [string]$Host,
 
-    $report = Get-SANtricityMappingsReport
+        [Parameter(ValueFromPipelineByPropertyName=$true)]
+        [string]$Volume
+    )
+
+    $params = @{}
+    if ($Host) { $params['Host'] = $Host }
+    if ($Volume) { $params['Volume'] = $Volume }
+
+    $report = Get-SANtricityMappingsReport @params
     <#
     .SYNOPSIS
     Display a formatted mappings report in the console.

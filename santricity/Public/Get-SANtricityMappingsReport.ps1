@@ -12,7 +12,13 @@ function Get-SANtricityMappingsReport {
     Get-SANtricityMappingsReport | Format-Table -AutoSize
     #>
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+        [string]$Host,
+
+        [Parameter(ValueFromPipelineByPropertyName=$true)]
+        [string]$Volume
+    )
 
     $fetch = {
         param(
@@ -29,10 +35,25 @@ function Get-SANtricityMappingsReport {
         }
     }
 
-    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolumes }
+    # Pass filters down to sub-commands where supported to reduce data transfer
+    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHosts -Name $Host }
+    
+    # We can't filter volumes by simple regex at the API level via Get-SANtricityVolumes yet 
+    # (it does client-side filtering anyway), but we can pass it if we update the call.
+    # However, filtering at the report level after aggregation is often safer for complex reports 
+    # to ensure we don't miss related objects. 
+    # Let's fetch all and filter in memory for the report to ensure all relationships resolve,
+    # OR pass filters to Get-SANtricityVolumes to optimize.
+    # Given the previous context, Get-SANtricityVolumes -Name does client-side filtering.
+    
+    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolumes -Name $Volume }
     $pools = & $fetch 'storage pools' '/storage-pools' { Get-SANtricityStoragePools }
-    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHosts }
+    
+    # We fetch all groups because we might match a host inside a group even if filtering by host name
+    # If the user passed -Host, they might mean HostName OR HostGroupName. 
+    # For now, let's fetch all groups to be safe, or filter if we want to support HostGroup filtering too.
     $groups = & $fetch 'host groups' '/host-groups' { Get-SANtricityHostGroups }
+    
     $mappings = & $fetch 'volume mappings' '/volume-mappings' { Get-SANtricityVolumeMappings }
 
     $registerKey = {
@@ -186,6 +207,26 @@ function Get-SANtricityMappingsReport {
             }
         }
         if ($targetLabel) { $row['targetLabel'] = $targetLabel }
+
+        # Filter: Host/Group Name (Simple Regex)
+        if (-not [string]::IsNullOrWhiteSpace($Host)) {
+            $h = if ($row.Contains('hostLabel')) { $row['hostLabel'] } else { $null }
+            $g = if ($row.Contains('hostGroup')) { $row['hostGroup'] } else { $null }
+            $t = if ($row.Contains('targetLabel')) { $row['targetLabel'] } else { $null }
+            
+            $match = $false
+            if ($h -and $h -match $Host) { $match = $true }
+            if (-not $match -and $g -and $g -match $Host) { $match = $true }
+            if (-not $match -and $t -and $t -match $Host) { $match = $true }
+            
+            if (-not $match) { continue }
+        }
+
+        # Filter: Volume Name (Simple Regex)
+        if (-not [string]::IsNullOrWhiteSpace($Volume)) {
+            $v = if ($row.Contains('mappableObjectName')) { $row['mappableObjectName'] } else { $null }
+            if (-not ($v -and $v -match $Volume)) { continue }
+        }
 
         $mapId = & $firstPresent @($m.mapRef,$m.mappingRef,$m.lunMappingRef,$m.id)
         if ($mapId) { $row['mappingRef'] = $mapId }

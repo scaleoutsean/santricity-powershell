@@ -30,6 +30,17 @@ Get-SANtricityVolumes -Verbose
 Get-SANtricityVolumes -Size "100GB"
 
 Get-SANtricityMappingsReport | Format-Table -AutoSize
+Get-SANtricityMappingsReport -Host "ha_group_.*"
+Get-SANtricityMappingsReport -Volume "db_vol_.*"
+
+Show-SANtricityMappingsReportFormatted -Host "server1"
+
+Get-SANtricityVolumeMappings -Type cluster
+
+Get-SANtricityStoragePools -RaidLevel "raidDiskPool"
+Get-SANtricityStoragePools -Name "Pool_A"
+
+Get-SANtricityMappingsReport -Volume "vcenter1_" | Format-Table
 
 Get-Command -Module santricity
 ```

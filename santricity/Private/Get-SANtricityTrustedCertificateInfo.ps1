@@ -16,13 +16,18 @@ function Get-SANtricityTrustedCertificateInfo {
     $certs = [List[X509Certificate2]]::new()
 
     if ($textSample -match '-----BEGIN CERTIFICATE-----') {
-        $pattern = '-----BEGIN CERTIFICATE-----\s*(?<body>.*?)\s*-----END CERTIFICATE-----'
-        $matches = [regex]::Matches($textSample, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
-        foreach ($match in $matches) {
-            $body = ($match.Groups['body'].Value -replace '\s+', '')
+        $pattern = '(?s)-----BEGIN CERTIFICATE-----\s*(?<body>.*?)\s*-----END CERTIFICATE-----'
+        $foundMatches = [regex]::Matches($textSample, $pattern)
+        foreach ($match in $foundMatches) {
+            $body = $match.Groups['body'].Value -replace '\s+', ''
             if ([string]::IsNullOrWhiteSpace($body)) { continue }
-            $certBytes = [Convert]::FromBase64String($body)
-            $certs.Add([X509Certificate2]::new($certBytes))
+            try {
+                $certBytes = [Convert]::FromBase64String($body)
+                $x509 = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes)
+                $certs.Add($x509)
+            } catch {
+                Write-Warning "Failed to parse certificate block: $_"
+            }
         }
     } else {
         $certs.Add([X509Certificate2]::new($rawBytes))
