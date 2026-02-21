@@ -34,8 +34,8 @@ function Resize-SANtricityVolume {
 
         # Size
         [Parameter(Mandatory=$true, Position=1)]
-        [Alias("TotalSize","NewSize")]
-        [int64]$Size,
+        [Alias("Size","NewSize")]
+        [int64]$TotalSize,
 
         [Parameter(Mandatory=$true)]
         [ValidateSet("bytes","mb","gb","tb")]
@@ -65,11 +65,11 @@ function Resize-SANtricityVolume {
 
         # 2. Build Body
         $body = @{
-            expansionSize = $Size
+            expansionSize = $TotalSize
             sizeUnit = $SizeUnit.ToLower()
         }
 
-        Write-Verbose "Resizing (Expanding) Volume $VolumeId to new total size $Size $SizeUnit..."
+        Write-Verbose "Resizing (Expanding) Volume $VolumeId to new total size $TotalSize $SizeUnit..."
         
         # 3. Call API
         return Invoke-SANtricityRequest -Method 'POST' -Path "/volumes/$VolumeId/expand" -Body $body
