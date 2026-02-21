@@ -103,18 +103,30 @@ function New-SANtricityConsistencyGroup {
                 }
             }
             
-            # Try batch first (some firmware versions support simple array body)
+            # Try batch first with retries (some versions may need "prodding")
             $batchUri = "/consistency-groups/$($cg.id)/member-volumes/batch"
             
             try {
                 Invoke-SANtricityRequest -Method 'POST' -Path $batchUri -Body $batchPayload
             } catch {
-                Write-Warning "Batch add failed ($_). Attempting individual adds..."
+                Write-Warning "Batch add failed ($_). Attempting individual adds with retries..."
                 foreach ($item in $batchPayload) {
-                    try {
-                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $item
-                    } catch {
-                        Write-Error "Failed to add volume $($item.baseMappableObjectId) to CG: $_"
+                    $maxRetries = 3
+                    $success = $false
+                    
+                    for ($i = 0; $i -lt $maxRetries; $i++) {
+                        try {
+                            Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $item
+                            $success = $true
+                            break
+                        } catch {
+                             Write-Verbose "Attempt $($i+1) failed: $_. Retrying in 5 seconds..."
+                             Start-Sleep -Seconds 5
+                        }
+                    }
+                    
+                    if (-not $success) {
+                        Write-Error "Failed to add volume $($item.baseMappableObjectId) to CG after $maxRetries attempts."
                     }
                 }
             }
