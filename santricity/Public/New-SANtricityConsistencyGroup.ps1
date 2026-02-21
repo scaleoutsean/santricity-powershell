@@ -101,43 +101,31 @@ function New-SANtricityConsistencyGroup {
         if ($ResolvedVolumeIds.Count -gt 0) {
             Write-Verbose "Adding $($ResolvedVolumeIds.Count) member volumes to CG '$Name'..."
             
-            # Prepare batch payload
-            # Based on typical API behavior for batch endpoints, it's an array of objects.
-            $batchPayload = @()
             foreach ($vid in $ResolvedVolumeIds) {
-                $batchPayload += @{
-                    baseMappableObjectId = $vid
-                    repositoryPercentage = $RepositoryPercentage
-                    warningThreshold = $WarningThreshold
-                    autoDeleteLimit = $AutoDeleteLimit
+                # Construct payload for individual add
+                # Endpoint: POST /consistency-groups/{id}/member-volumes
+                # Payload: { volumeId: "...", repositoryPercent: 20 }
+                $payload = @{
+                    volumeId = $vid
+                    repositoryPercent = $RepositoryPercentage
                 }
-            }
-            
-            # Try batch first with retries (some versions may need "prodding")
-            $batchUri = "/consistency-groups/$($cg.id)/member-volumes/batch"
-            
-            try {
-                Invoke-SANtricityRequest -Method 'POST' -Path $batchUri -Body $batchPayload -ErrorAction Stop
-            } catch {
-                Write-Warning "Batch add failed ($($_)). Attempting individual adds with retries..."
-                foreach ($item in $batchPayload) {
-                    $maxRetries = 3
-                    $success = $false
-                    
-                    for ($i = 0; $i -lt $maxRetries; $i++) {
-                        try {
-                            Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $item -ErrorAction Stop
-                            $success = $true
-                            break
-                        } catch {
-                             Write-Verbose "Attempt $($i+1) failed: $_. Retrying in 5 seconds..."
-                             Start-Sleep -Seconds 5
-                        }
+
+                $maxRetries = 3
+                $success = $false
+                
+                for ($i = 0; $i -lt $maxRetries; $i++) {
+                    try {
+                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $payload -ErrorAction Stop
+                        $success = $true
+                        break
+                    } catch {
+                         Write-Verbose "Attempt $($i+1) to add volume $vid failed: $_. Retrying in 5 seconds..."
+                         Start-Sleep -Seconds 5
                     }
-                    
-                    if (-not $success) {
-                        Write-Error "Failed to add volume $($item.baseMappableObjectId) to CG after $maxRetries attempts."
-                    }
+                }
+                
+                if (-not $success) {
+                    Write-Error "Failed to add volume $vid to CG after $maxRetries attempts."
                 }
             }
         }
