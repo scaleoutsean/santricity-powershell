@@ -69,6 +69,19 @@ function New-SANtricityConsistencyGroup {
         # 2. Check Exists
         $existing = Get-SANtricityConsistencyGroup -Name $Name
         if ($existing) {
+            # Filter out any objects that might be empty or missing an ID
+            $validExisting = @($existing) | Where-Object { -not [string]::IsNullOrWhiteSpace($_.id) }
+            
+            if ($validExisting.Count -gt 1) {
+                Write-Warning "Multiple Consistency Groups found with name '$Name'. Using the first valid one."
+                $cg = $validExisting | Select-Object -First 1
+            } elseif ($validExisting.Count -eq 1) {
+                $cg = $validExisting[0]
+            } else {
+                # Fallback if filtering removed everything (shouldn't happen if name matched)
+                $cg = $existing | Select-Object -First 1
+            }
+
             Write-Warning "Consistency Group '$Name' already exists."
             Write-Warning "Existing CG ID: $($existing.id), CG Name: $($existing.name). Member Volumes: $($existing.memberVolumeCount)"
             # If volumes are provided, we should probably ensure they are added to the existing group
