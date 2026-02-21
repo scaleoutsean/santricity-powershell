@@ -70,7 +70,7 @@ function New-SANtricityConsistencyGroup {
         $existing = Get-SANtricityConsistencyGroup -Name $Name
         if ($existing) {
             Write-Warning "Consistency Group '$Name' already exists."
-            
+            Write-Warning "Existing CG ID: $($existing.id), CG Name: $($existing.name). Member Volumes: $($existing.memberVolumeCount)"
             # If volumes are provided, we should probably ensure they are added to the existing group
             if ($ResolvedVolumeIds.Count -gt 0) {
                 Write-Verbose "Adding $($ResolvedVolumeIds.Count) member volumes to existing CG '$Name'..."
@@ -117,16 +117,16 @@ function New-SANtricityConsistencyGroup {
             $batchUri = "/consistency-groups/$($cg.id)/member-volumes/batch"
             
             try {
-                Invoke-SANtricityRequest -Method 'POST' -Path $batchUri -Body $batchPayload
+                Invoke-SANtricityRequest -Method 'POST' -Path $batchUri -Body $batchPayload -ErrorAction Stop
             } catch {
-                Write-Warning "Batch add failed ($_). Attempting individual adds with retries..."
+                Write-Warning "Batch add failed ($($_)). Attempting individual adds with retries..."
                 foreach ($item in $batchPayload) {
                     $maxRetries = 3
                     $success = $false
                     
                     for ($i = 0; $i -lt $maxRetries; $i++) {
                         try {
-                            Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $item
+                            Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $item -ErrorAction Stop
                             $success = $true
                             break
                         } catch {
