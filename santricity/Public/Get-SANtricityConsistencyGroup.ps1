@@ -23,11 +23,12 @@ function Get-SANtricityConsistencyGroup {
     )
 
     if ($Id) {
-        $result = Invoke-SANtricityRequest -Method 'GET' -Path "/consistency-groups/$Id"
-        if ($result -is [array]) {
-            return $result | Select-Object -First 1
-        }
-        return $result
+        # Retrieve all groups and filter by ID to ensure consistent object structure
+        # (Direct endpoint can sometimes behave inconsistently regarding list wrapping)
+        $allGroups = Invoke-SANtricityRequest -Method 'GET' -Path '/consistency-groups'
+        if (-not $allGroups) { return $null }
+
+        return $allGroups | Where-Object { $_.id -eq $Id } | Select-Object -First 1
     }
 
     $allGroups = Invoke-SANtricityRequest -Method 'GET' -Path '/consistency-groups'

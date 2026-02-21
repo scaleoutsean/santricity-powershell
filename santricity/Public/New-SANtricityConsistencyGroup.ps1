@@ -130,10 +130,8 @@ function New-SANtricityConsistencyGroup {
             }
         }
         
-        $finalCg = Get-SANtricityConsistencyGroup -Id $cg.id
-        if ($finalCg -is [array]) {
-            return $finalCg | Select-Object -First 1
-        }
-        return $finalCg
+        # Return the object we already have/updated (no need to re-fetch if we trust $cg or refreshed it)
+        # But to be safe and get the latest state including member counts:
+        return Get-SANtricityConsistencyGroup -Id $cg.id
     }
 }
