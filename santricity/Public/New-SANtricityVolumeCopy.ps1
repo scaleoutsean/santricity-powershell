@@ -79,8 +79,11 @@ function New-SANtricityVolumeCopy {
         }
         
         if ($OnlineCopy.IsPresent) {
-            # Based on SMcli syntax, repositoryPercentOfBase is expected.
-            $body['repositoryPercentOfBase'] = $RepositoryPercentage
+            # Based on API spec, repositoryPercentOfBase is NOT supported in Create.
+            # We rely on system default candidate selection.
+            # If explicit candidate is needed, we would need 'repositoryCandidate' object.
+            
+            # $body['repositoryPercentOfBase'] = $RepositoryPercentage 
         }
 
         # Api usually expects camelCase enum values like "priority2"
