@@ -107,6 +107,11 @@ function New-SANtricityConsistencyGroup {
             $cg = Invoke-SANtricityRequest -Method 'POST' -Path '/consistency-groups' -Body $cgPayload
             
             if (-not $cg) { throw "Failed to create Consistency Group." }
+            
+            # Ensure $cg is a single object (POST usually returns 1, but be safe)
+            if ($cg.Count -and $cg.Count -gt 1) {
+                 $cg = $cg | Select-Object -First 1
+            }
         }
 
         # 4. Add Member Volumes (if any)
@@ -125,9 +130,12 @@ function New-SANtricityConsistencyGroup {
                 $maxRetries = 3
                 $success = $false
                 
+                # Ensure we have a single ID
+                $targetId = if ($cg -is [array]) { $cg[0].id } else { $cg.id }
+                
                 for ($i = 0; $i -lt $maxRetries; $i++) {
                     try {
-                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/member-volumes" -Body $payload -ErrorAction Stop
+                        Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$targetId/member-volumes" -Body $payload -ErrorAction Stop
                         $success = $true
                         break
                     } catch {
