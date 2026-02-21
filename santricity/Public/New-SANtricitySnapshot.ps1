@@ -73,7 +73,14 @@ function New-SANtricitySnapshot {
         Write-Verbose "Creating snapshot for Consistency Group '$($cg.name)'..."
         
         # Endpoint: POST /consistency-groups/{cg-id}/snapshots
-        return Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/snapshots"
+        try {
+            return Invoke-SANtricityRequest -Method 'POST' -Path "/consistency-groups/$($cg.id)/snapshots"
+        } catch {
+            if ($_.Exception.Message -match "422" -or $_.Exception.Message -match "createdObjectNotFound") {
+                throw "Cannot create snapshot for Consistency Group '$($cg.name)'. The group may be empty (no member volumes). Add volumes before taking a snapshot."
+            }
+            throw $_
+        }
     }
 
     # ----------------------------

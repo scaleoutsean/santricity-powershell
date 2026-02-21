@@ -70,21 +70,31 @@ function New-SANtricityConsistencyGroup {
         $existing = Get-SANtricityConsistencyGroup -Name $Name
         if ($existing) {
             Write-Warning "Consistency Group '$Name' already exists."
-            return $existing
-        }
-        
-        # 3. Create Empty CG (Endpoint: /consistency-groups)
-        # Payload only requires name, fullPolicy, etc.
-        $cgPayload = @{
-            name = $Name
-            fullPolicy = "purgepit" # Default behavior for CGs too
-            rollbackPriority = "highest" # Default priority for rollbacks
-        }
+            
+            # If volumes are provided, we should probably ensure they are added to the existing group
+            if ($ResolvedVolumeIds.Count -gt 0) {
+                Write-Verbose "Adding $($ResolvedVolumeIds.Count) member volumes to existing CG '$Name'..."
+                $cg = $existing
+                # Check current members first to avoid re-adding (optional but good)
+                # GET /consistency-groups/{id}/member-volumes
+                # For now, we trust the add loop to handle duplicates or just try adding them.
+                # Just fall through to add logic.
+            } else {
+                return $existing
+            }
+        } else {
+             # 3. Create Empty CG (Endpoint: /consistency-groups)
+            $cgPayload = @{
+                name = $Name
+                fullPolicy = "purgepit" # Default behavior for CGs too
+                rollbackPriority = "highest" # Default priority for rollbacks
+            }
 
-        Write-Verbose "Creating empty Consistency Group '$Name'..."
-        $cg = Invoke-SANtricityRequest -Method 'POST' -Path '/consistency-groups' -Body $cgPayload
-        
-        if (-not $cg) { throw "Failed to create Consistency Group." }
+            Write-Verbose "Creating empty Consistency Group '$Name'..."
+            $cg = Invoke-SANtricityRequest -Method 'POST' -Path '/consistency-groups' -Body $cgPayload
+            
+            if (-not $cg) { throw "Failed to create Consistency Group." }
+        }
 
         # 4. Add Member Volumes (if any)
         # 4. Add Member Volumes (if any)
