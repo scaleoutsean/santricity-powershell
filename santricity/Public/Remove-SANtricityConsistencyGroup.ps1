@@ -38,11 +38,11 @@ function Remove-SANtricityConsistencyGroup {
             }
             $Id = $cg.id
             if ($PSCmdlet.ShouldProcess("Consistency Group '$Name' ($Id)", "Delete")) {
-                Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id"
+                Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id" | Out-Null
             }
         } elseif ($PSCmdlet.ParameterSetName -eq "ById") {
             if ($PSCmdlet.ShouldProcess("Consistency Group ID $Id", "Delete")) {
-                Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id"
+                Invoke-SANtricityRequest -Method 'DELETE' -Path "/consistency-groups/$Id" | Out-Null
             }
         }
     }
