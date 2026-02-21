@@ -65,7 +65,7 @@ function Resize-SANtricityVolume {
 
         # 2. Build Body
         $body = @{
-            expansionSize = $TotalSize
+            expansionSize = "$TotalSize"
             sizeUnit = $SizeUnit.ToLower()
         }
 
