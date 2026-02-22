@@ -11,7 +11,7 @@ It has been tested with PowerShell 7.5 and 7.6 (Preview 6). It is aimed at Day 1
 Usage (PowerShell 7):
 
 ```powershell
-https://github.com/scaleoutsean/santricity-powershell
+git clone https://github.com/scaleoutsean/santricity-powershell
 cd santricity-powershell
 # Optional; if you don't want to install in standard location
 # git clone https://github.com/dfinke/PowerShellRich
