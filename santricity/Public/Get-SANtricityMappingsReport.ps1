@@ -36,25 +36,25 @@ function Get-SANtricityMappingsReport {
     }
 
     # Pass filters down to sub-commands where supported to reduce data transfer
-    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHosts -Name $Host }
+    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHost -Name $Host }
     
-    # We can't filter volumes by simple regex at the API level via Get-SANtricityVolumes yet 
+    # We can't filter volumes by simple regex at the API level via Get-SANtricityVolume yet 
     # (it does client-side filtering anyway), but we can pass it if we update the call.
     # However, filtering at the report level after aggregation is often safer for complex reports 
     # to ensure we don't miss related objects. 
     # Let's fetch all and filter in memory for the report to ensure all relationships resolve,
-    # OR pass filters to Get-SANtricityVolumes to optimize.
-    # Given the previous context, Get-SANtricityVolumes -Name does client-side filtering.
+    # OR pass filters to Get-SANtricityVolume to optimize.
+    # Given the previous context, Get-SANtricityVolume -Name does client-side filtering.
     
-    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolumes -Name $Volume }
-    $pools = & $fetch 'storage pools' '/storage-pools' { Get-SANtricityStoragePools }
+    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolume -Name $Volume }
+    $pools = & $fetch 'storage pools' '/storage-pools' { Get-SANtricityStoragePool }
     
     # We fetch all groups because we might match a host inside a group even if filtering by host name
     # If the user passed -Host, they might mean HostName OR HostGroupName. 
     # For now, let's fetch all groups to be safe, or filter if we want to support HostGroup filtering too.
-    $groups = & $fetch 'host groups' '/host-groups' { Get-SANtricityHostGroups }
+    $groups = & $fetch 'host groups' '/host-groups' { Get-SANtricityHostGroup }
     
-    $mappings = & $fetch 'volume mappings' '/volume-mappings' { Get-SANtricityVolumeMappings }
+    $mappings = & $fetch 'volume mappings' '/volume-mappings' { Get-SANtricityVolumeMapping }
 
     $registerKey = {
         param(

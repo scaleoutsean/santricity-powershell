@@ -28,8 +28,8 @@ Connect-SANtricity -Url $ControllerUrl -User $User -Password $Pass -IgnoreCertEr
 
 # 2. Get Volume IDs
 Write-Host "Resolving volumes..." -ForegroundColor Cyan
-$srcVol = Get-SANtricityVolumes | Where-Object Name -eq $SourceVolName
-$dstVol = Get-SANtricityVolumes | Where-Object Name -eq $TargetVolName
+$srcVol = Get-SANtricityVolume | Where-Object Name -eq $SourceVolName
+$dstVol = Get-SANtricityVolume | Where-Object Name -eq $TargetVolName
 
 if (-not $srcVol -or -not $dstVol) {
     Write-Error "Could not find source or target volume."

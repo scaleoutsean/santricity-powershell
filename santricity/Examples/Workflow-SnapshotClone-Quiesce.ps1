@@ -37,8 +37,8 @@ function Send-SlackNotification ($Message) {
 Connect-SANtricity -Url $ControllerUrl -Credential $Creds -IgnoreCertErrors
 
 # 2. Identify Resources
-$srcVol = Get-SANtricityVolumes | Where-Object Name -eq $SourceVolName
-$hostMatch = Get-SANtricityHosts | Where-Object Name -eq $TestHostName
+$srcVol = Get-SANtricityVolume | Where-Object Name -eq $SourceVolName
+$hostMatch = Get-SANtricityHost | Where-Object Name -eq $TestHostName
 
 if (-not $srcVol) { Throw "Source volume '$SourceVolName' not found." }
 if (-not $hostMatch) { Throw "Test host '$TestHostName' not found." }

@@ -17,7 +17,7 @@
     .PARAMETER HostTypeIndex
     Filter by Host Type Index (integer).
 #>
-function Get-SANtricityHosts {
+function Get-SANtricityHost {
     [CmdletBinding()]
     param (
         [Parameter(Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]

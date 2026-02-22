@@ -1,5 +1,5 @@
 
-function Get-SANtricityVolumes {
+function Get-SANtricityVolume {
     <#
     .SYNOPSIS
     Retrieve volumes from the SANtricity API.
@@ -51,7 +51,7 @@ function Get-SANtricityVolumes {
 
         # Filter: HostRef (requires fetching mappings)
         if (-not [string]::IsNullOrWhiteSpace($HostRef)) {
-            $mappings = Get-SANtricityVolumeMappings
+            $mappings = Get-SANtricityVolumeMapping
             if ($mappings) {
                 # Find volumeRefs mapped to this HostRef
                 $mappedVolumeRefs = $mappings | Where-Object { $_.mapRef -eq $HostRef } | ForEach-Object { $_.volumeRef }

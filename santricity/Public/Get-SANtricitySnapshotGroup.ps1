@@ -47,7 +47,7 @@ function Get-SANtricitySnapshotGroup {
     }
 
     if ($VolumeName) {
-        $vol = Get-SANtricityVolumes | Where-Object { $_.label -eq $VolumeName }
+        $vol = Get-SANtricityVolume | Where-Object { $_.label -eq $VolumeName }
         if (-not $vol) {
             Write-Error "Volume with name '$VolumeName' not found."
             return $null

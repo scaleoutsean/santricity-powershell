@@ -1,5 +1,5 @@
 
-function Get-SANtricityVolumeMappings {
+function Get-SANtricityVolumeMapping {
     <#
     .SYNOPSIS
     Retrieve volume mappings from the SANtricity API.

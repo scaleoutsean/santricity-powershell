@@ -36,7 +36,7 @@ function Remove-SANtricityVolume {
         # 1. Resolve Volume
         if ($PSCmdlet.ParameterSetName -eq "ByName") {
             Write-Verbose "Resolving Volume Name '$VolumeName'..."
-            $vols = Get-SANtricityVolumes
+            $vols = Get-SANtricityVolume
             $matched = $vols | Where-Object { $_.name -eq $VolumeName -or $_.label -eq $VolumeName }
             
             if (-not $matched) { throw "Volume '$VolumeName' not found." }
@@ -50,7 +50,7 @@ function Remove-SANtricityVolume {
 
         # 2. Check for dependencies (Mappings)
         Write-Verbose "Checking for active mappings..."
-        $allMappings = Get-SANtricityVolumeMappings
+        $allMappings = Get-SANtricityVolumeMapping
         $activeMappings = $allMappings | Where-Object { $_.volumeRef -eq $VolumeId -or $_.mappableObjectId -eq $VolumeId }
 
         if ($activeMappings) {

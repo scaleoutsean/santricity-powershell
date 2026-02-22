@@ -35,7 +35,7 @@ function Remove-SANtricityHost {
         # 1. Resolve Host
         if ($PSCmdlet.ParameterSetName -eq "ByName") {
             Write-Verbose "Resolving Host Name '$HostName'..."
-            $hosts = Get-SANtricityHosts
+            $hosts = Get-SANtricityHost
             $matched = $hosts | Where-Object { $_.name -eq $HostName -or $_.label -eq $HostName }
             
             if (-not $matched) { throw "Host '$HostName' not found." }
@@ -49,7 +49,7 @@ function Remove-SANtricityHost {
 
         # 2. Check for dependencies (Mappings)
         Write-Verbose "Checking for active mappings on Host '$HostId'..."
-        $allMappings = Get-SANtricityVolumeMappings
+        $allMappings = Get-SANtricityVolumeMapping
         
         # Check if any mapping targets this specific host
         # API field is 'mapRef' (HostRef) and 'type'='host'

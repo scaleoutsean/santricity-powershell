@@ -1,5 +1,5 @@
 
-function Get-SANtricityStoragePools {
+function Get-SANtricityStoragePool {
     <#
     .SYNOPSIS
     Retrieve storage pools from the SANtricity API.

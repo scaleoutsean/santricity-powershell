@@ -37,7 +37,7 @@ function Remove-SANtricityHostGroup {
         # 1. Resolve Host Group
         if ($PSCmdlet.ParameterSetName -eq "ByName") {
             Write-Verbose "Resolving Host Group Name '$HostGroupName'..."
-            $groups = Get-SANtricityHostGroups
+            $groups = Get-SANtricityHostGroup
             $matched = $groups | Where-Object { $_.name -eq $HostGroupName -or $_.label -eq $HostGroupName }
             
             if (-not $matched) { throw "Host Group '$HostGroupName' not found." }
@@ -53,7 +53,7 @@ function Remove-SANtricityHostGroup {
         # 2. Safety Checks (Members and Mappings)
         Write-Verbose "Checking for hosts in group '$HostGroupId'..."
         
-        $allHosts = Get-SANtricityHosts
+        $allHosts = Get-SANtricityHost
         $memberHosts = $allHosts | Where-Object { $_.clusterRef -eq $HostGroupId }
         
         $hostCount = if ($memberHosts) { 
@@ -62,7 +62,7 @@ function Remove-SANtricityHostGroup {
 
         # Check for Mappings (Directly onto the Cluster object)
         Write-Verbose "Checking for active mappings on Host Group '$HostGroupId'..."
-        $allMappings = Get-SANtricityVolumeMappings
+        $allMappings = Get-SANtricityVolumeMapping
         $clusterMappings = $allMappings | Where-Object { ($_.mapRef -eq $HostGroupId -or $_.targetId -eq $HostGroupId) }
         
         $mapCount = if ($clusterMappings) {

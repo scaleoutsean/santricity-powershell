@@ -17,9 +17,9 @@ Filter by Host Group Name. Returns targets and volumes visible to this group.
 Filter details by protocol ('iscsi', 'nvme', 'all'). Default is 'all'.
 
 .EXAMPLE
-Get-SANtricityTargets -HostName "ESX-01" -Protocol iscsi
+Get-SANtricityTarget -HostName "ESX-01" -Protocol iscsi
 #>
-function Get-SANtricityTargets {
+function Get-SANtricityTarget {
     [CmdletBinding(DefaultParameterSetName="All")]
     param(
         [Parameter(ParameterSetName="ByHost")]
@@ -110,7 +110,7 @@ function Get-SANtricityTargets {
         
         if ($HostName) {
             Write-Verbose "Resolving Host '$HostName'..."
-            $hosts = Get-SANtricityHosts
+            $hosts = Get-SANtricityHost
             $h = $hosts | Where-Object { $_.name -eq $HostName -or $_.label -eq $HostName }
             if (-not $h) { throw "Host '$HostName' not found." }
             if ($h -is [array]) { $h = $h[0] } # Take first if dupes (handled by creation logic usually)
@@ -123,7 +123,7 @@ function Get-SANtricityTargets {
         }
         elseif ($HostGroupName) {
             Write-Verbose "Resolving Host Group '$HostGroupName'..."
-            $groups = Get-SANtricityHostGroups
+            $groups = Get-SANtricityHostGroup
             $g = $groups | Where-Object { $_.name -eq $HostGroupName -or $_.label -eq $HostGroupName }
             if (-not $g) { throw "Host Group '$HostGroupName' not found." }
             
@@ -136,14 +136,14 @@ function Get-SANtricityTargets {
             $validRefs = $targetIds.Id
             
             # Get All Mappings
-            $mappings = Get-SANtricityVolumeMappings
+            $mappings = Get-SANtricityVolumeMapping
             # Filter relevant mappings
             # API uses mapRef for the target (Host/Cluster) ID
             $myMappings = $mappings | Where-Object { $validRefs -contains $_.mapRef }
             
             if ($myMappings) {
                 # Get All Volumes (Optimization: Fetch only needed if possible, but GET /volumes is standard)
-                $volumes = Get-SANtricityVolumes
+                $volumes = Get-SANtricityVolume
                 
                 $mappedVols = @()
                 foreach ($map in $myMappings) {

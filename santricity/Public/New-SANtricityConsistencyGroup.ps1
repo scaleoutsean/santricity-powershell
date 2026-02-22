@@ -56,7 +56,7 @@ function New-SANtricityConsistencyGroup {
 
         if ($PSCmdlet.ParameterSetName -eq 'ByVolumeName' -and $VolumeName) {
             foreach ($vn in $VolumeName) {
-                $vol = Get-SANtricityVolumes | Where-Object { $_.label -eq $vn }
+                $vol = Get-SANtricityVolume | Where-Object { $_.label -eq $vn }
                 if (-not $vol) {
                     throw "Volume with name '$vn' not found."
                 }

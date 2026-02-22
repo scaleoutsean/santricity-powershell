@@ -60,7 +60,7 @@ function New-SANtricityVolumeMapping {
         # 1. Resolve Volume
         if ($PSCmdlet.ParameterSetName -like "*ByName*") {
             Write-Verbose "Resolving Volume Name '$VolumeName'..."
-            $vols = Get-SANtricityVolumes
+            $vols = Get-SANtricityVolume
             $matched = $vols | Where-Object { $_.name -eq $VolumeName -or $_.label -eq $VolumeName }
             if (-not $matched) { throw "Volume '$VolumeName' not found." }
             if ($matched -is [array]) {
@@ -74,7 +74,7 @@ function New-SANtricityVolumeMapping {
         # Pre-check: Verify if volume is already mapped
         # This avoids a 422 error from the array.
         Write-Verbose "Checking for existing mappings for volume '$VolumeId'..."
-        $allMappings = Get-SANtricityVolumeMappings
+        $allMappings = Get-SANtricityVolumeMapping
         $existing = $allMappings | Where-Object { $_.volumeRef -eq $VolumeId }
         if ($existing) {
             $msg = "Volume is already mapped to target '$($existing.mapRef)' (LUN $($existing.lun))."
@@ -87,7 +87,7 @@ function New-SANtricityVolumeMapping {
         # Note: We support HostName OR HostGroupName parameters to look up distinctly
         if ($PSBoundParameters.ContainsKey('HostName')) {
              Write-Verbose "Resolving Host Name '$HostName'..."
-             $hosts = Get-SANtricityHosts
+             $hosts = Get-SANtricityHost
              $matchedH = $hosts | Where-Object { $_.name -eq $HostName -or $_.label -eq $HostName }
              if (-not $matchedH) { throw "Host '$HostName' not found." }
              if ($matchedH -is [array]) { throw "Multiple hosts matched '$HostName'." }
@@ -102,7 +102,7 @@ function New-SANtricityVolumeMapping {
              }
         } elseif ($PSBoundParameters.ContainsKey('HostGroupName')) {
              Write-Verbose "Resolving Host Group Name '$HostGroupName'..."
-             $groups = Get-SANtricityHostGroups
+             $groups = Get-SANtricityHostGroup
              $matchedG = $groups | Where-Object { $_.name -eq $HostGroupName -or $_.label -eq $HostGroupName }
              if (-not $matchedG) { throw "Host Group '$HostGroupName' not found." }
              if ($matchedG -is [array]) { throw "Multiple host groups matched '$HostGroupName'." }

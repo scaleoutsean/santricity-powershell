@@ -26,8 +26,8 @@ $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin
 # For production with controller or CA pinning (legacy pipeline implied when using -TrustedCertificate):
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-or-ca-chain.pem' -Verbose
 
-Get-SANtricityVolumes -Verbose
-Get-SANtricityVolumes -Size "100GB"
+Get-SANtricityVolume -Verbose
+Get-SANtricityVolume -Size "100GB"
 
 Get-SANtricityMappingsReport | Format-Table -AutoSize
 Get-SANtricityMappingsReport -Host "ha_group_.*"
@@ -35,10 +35,10 @@ Get-SANtricityMappingsReport -Volume "db_vol_.*"
 
 Show-SANtricityMappingsReportFormatted -Host "server1"
 
-Get-SANtricityVolumeMappings -Type cluster
+Get-SANtricityVolumeMapping -Type cluster
 
-Get-SANtricityStoragePools -RaidLevel "raidDiskPool"
-Get-SANtricityStoragePools -Name "Pool_A"
+Get-SANtricityStoragePool -RaidLevel "raidDiskPool"
+Get-SANtricityStoragePool -Name "Pool_A"
 
 Get-SANtricityMappingsReport -Volume "vcenter1_" | Format-Table
 

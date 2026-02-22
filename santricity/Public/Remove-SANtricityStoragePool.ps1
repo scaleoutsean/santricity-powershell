@@ -37,7 +37,7 @@ function Remove-SANtricityStoragePool {
         # 1. Resolve Pool
         if ($PSCmdlet.ParameterSetName -eq "ByName") {
             Write-Verbose "Resolving Pool Name '$PoolName'..."
-            $pools = Get-SANtricityStoragePools
+            $pools = Get-SANtricityStoragePool
             $matched = $pools | Where-Object { $_.name -eq $PoolName -or $_.label -eq $PoolName }
             
             if (-not $matched) { throw "Storage Pool '$PoolName' not found." }
@@ -55,7 +55,7 @@ function Remove-SANtricityStoragePool {
         Write-Verbose "Checking for volumes in pool '$PoolId'..."
         
         # Get all volumes (optimization: could filter at API level if supported, but typically client-side for this module)
-        $allVolumes = Get-SANtricityVolumes
+        $allVolumes = Get-SANtricityVolume
         $poolVolumes = $allVolumes | Where-Object { $_.volumeGroupRef -eq $PoolId }
 
         if ($poolVolumes) {
@@ -64,7 +64,7 @@ function Remove-SANtricityStoragePool {
             
             # Check for Mappings on these volumes
             Write-Verbose "Volumes found. Checking for active mappings..."
-            $allMappings = Get-SANtricityVolumeMappings
+            $allMappings = Get-SANtricityVolumeMapping
             
             # Filter mappings where map.volumeRef matches any of our pool volumes
             # $volIds might be a single string or an array

@@ -89,7 +89,7 @@ function New-SANtricityVolume {
     elseif ($PSCmdlet.ParameterSetName -eq "ByName") {
         # Resolve By Name
         Write-Verbose "Resolving pool name '$PoolName'..."
-        $pools = Get-SANtricityStoragePools
+        $pools = Get-SANtricityStoragePool
         $matchedPool = $pools | Where-Object { 
             $_.label -eq $PoolName -or $_.name -eq $PoolName -or $_.volumeGroupName -eq $PoolName
         }
@@ -104,7 +104,7 @@ function New-SANtricityVolume {
     elseif ($PSCmdlet.ParameterSetName -eq "Auto") {
         # Auto Selection Logic
         Write-Verbose "Auto-selecting storage pool..."
-        $pools = Get-SANtricityStoragePools
+        $pools = Get-SANtricityStoragePool
         if (-not $pools) {
             throw "No storage pools found on the array."
         }

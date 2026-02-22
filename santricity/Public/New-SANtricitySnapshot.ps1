@@ -89,14 +89,14 @@ function New-SANtricitySnapshot {
 
     # 1. Resolve Volume Name to ID if needed
     if ($PSCmdlet.ParameterSetName -eq 'ByVolumeName') {
-        $vol = Get-SANtricityVolumes | Where-Object { $_.label -eq $VolumeName }
+        $vol = Get-SANtricityVolume | Where-Object { $_.label -eq $VolumeName }
         if (-not $vol) {
             throw "Volume with name '$VolumeName' not found."
         }
         $BaseVolumeId = $vol.id
     } else {
         # Fetch volume anyway to get the name for logging
-        $vol = Get-SANtricityVolumes | Where-Object { $_.id -eq $BaseVolumeId }
+        $vol = Get-SANtricityVolume | Where-Object { $_.id -eq $BaseVolumeId }
         $VolumeName = if ($vol) { $vol.label } else { "vol_$BaseVolumeId" }
     }
 

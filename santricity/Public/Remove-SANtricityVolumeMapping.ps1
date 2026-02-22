@@ -41,7 +41,7 @@ function Remove-SANtricityVolumeMapping {
         if ($PSCmdlet.ParameterSetName -eq "ByVolumeAndTargetName") {
             # 1. Resolve Volume
             Write-Verbose "Resolving Volume '$VolumeName'..."
-            $vols = Get-SANtricityVolumes
+            $vols = Get-SANtricityVolume
             $matchedVol = $vols | Where-Object { $_.name -eq $VolumeName -or $_.label -eq $VolumeName }
             
             if (-not $matchedVol) { throw "Volume '$VolumeName' not found." }
@@ -55,8 +55,8 @@ function Remove-SANtricityVolumeMapping {
 
             # 2. Resolve Target (Safety Check)
             Write-Verbose "Resolving Target '$TargetName' in Hosts and Host Groups..."
-            $hosts = Get-SANtricityHosts
-            $groups = Get-SANtricityHostGroups
+            $hosts = Get-SANtricityHost
+            $groups = Get-SANtricityHostGroup
             
             $matchedHosts = @($hosts | Where-Object { $_.name -eq $TargetName -or $_.label -eq $TargetName })
             $matchedGroups = @($groups | Where-Object { $_.name -eq $TargetName -or $_.label -eq $TargetName })
@@ -97,7 +97,7 @@ function Remove-SANtricityVolumeMapping {
 
             # 3. Find Mapping
             Write-Verbose "Finding mapping for Volume $volumeId and Target $targetId..."
-            $mappings = Get-SANtricityVolumeMappings
+            $mappings = Get-SANtricityVolumeMapping
             $matchingMapping = $mappings | Where-Object { 
                 $_.volumeRef -eq $volumeId -and $_.mapRef -eq $targetId 
             }

@@ -1,5 +1,5 @@
 
-function Get-SANtricityHostGroups {
+function Get-SANtricityHostGroup {
     <#
     .SYNOPSIS
     Retrieve host-groups from the SANtricity API.

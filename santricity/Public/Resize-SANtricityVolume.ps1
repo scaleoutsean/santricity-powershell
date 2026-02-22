@@ -46,7 +46,7 @@ function Resize-SANtricityVolume {
         # 1. Resolve Volume ID if Name provided
         if ($PSCmdlet.ParameterSetName -eq "ByName") {
             Write-Verbose "Resolving Volume Name '$VolumeName' to ID..."
-            $vols = Get-SANtricityVolumes
+            $vols = Get-SANtricityVolume
             $matched = $vols | Where-Object { $_.name -eq $VolumeName -or $_.label -eq $VolumeName }
             if (-not $matched) {
                 throw "Volume '$VolumeName' not found."

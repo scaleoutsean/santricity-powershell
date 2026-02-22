@@ -22,14 +22,14 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 
 | Cmdlet | Status | Notes |
 |--------|--------|-------|
-| `Get-SANtricityVolumes` | **Stable** | Basic wrapper. |
-| `Get-SANtricityStoragePools` | **Stable** | Basic wrapper. |
-| `Get-SANtricityHosts` | **Stable** | Basic wrapper. |
-| `Get-SANtricityHostGroups` | **Stable** | Basic wrapper. |
-| `Get-SANtricityVolumeMappings` | **Stable** | Basic wrapper. |
+| `Get-SANtricityVolume` | **Stable** | Basic wrapper. |
+| `Get-SANtricityStoragePool` | **Stable** | Basic wrapper. |
+| `Get-SANtricityHost` | **Stable** | Basic wrapper. |
+| `Get-SANtricityHostGroup` | **Stable** | Basic wrapper. |
+| `Get-SANtricityVolumeMapping` | **Stable** | Basic wrapper. |
 | `Get-SANtricityMappingsReport` | **Stable** | Aggregates data from multiple endpoints. |
 | `Show-SANtricityMappingsReportFormatted` | **Stable** | Formats report using PowerShellRich if available. |
-| `Get-SANtricityTargets` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
+| `Get-SANtricityTarget` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
 
 ### Volume Management
 
