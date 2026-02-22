@@ -70,6 +70,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Remove-SANtricityVolumeCopy` | **Beta** | Deletes the volume copy pair relationship. |
 | `Get-SANtricityConsistencyGroup` | **Beta** | Lists multi-volume consistency groups. |
 | `New-SANtricityConsistencyGroup` | **Beta** | Creates consistency groups with batch member addition. |
+| `New-SANtricityConsistencyGroupView` | **Beta** | Creates consistency group views (linked clones). |
 | `Remove-SANtricityConsistencyGroup` | **Beta** | Deletes consistency groups and member snapshot groups. |
 
 ### Pool Management

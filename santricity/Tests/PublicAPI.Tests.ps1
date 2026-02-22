@@ -43,6 +43,29 @@ Describe "Module Public API Surface" {
         # Pool Management
         "Remove-SANtricityStoragePool",
 
+        # Snapshot & Clone Management (Single Volume)
+        "Get-SANtricitySnapshotGroup",
+        "New-SANtricitySnapshotGroup",
+        "New-SANtricitySnapshot",
+        "Get-SANtricitySnapshotImage",
+        "Remove-SANtricitySnapshotImage",
+        "Get-SANtricityClone",
+        "New-SANtricityClone",
+        "Update-SANtricityClone",
+        "Remove-SANtricityClone",
+
+        # Consistency Group Management
+        "Get-SANtricityConsistencyGroup",
+        "New-SANtricityConsistencyGroup",
+        "New-SANtricityConsistencyGroupView",
+        "Remove-SANtricityConsistencyGroup",
+
+        # Volume Copy Management
+        "Get-SANtricityVolumeCopy",
+        "New-SANtricityVolumeCopy",
+        "Stop-SANtricityVolumeCopy",
+        "Remove-SANtricityVolumeCopy",
+
         # Diagnostics
         "Start-SANtricityTranscript",
         "Stop-SANtricityTranscript"
