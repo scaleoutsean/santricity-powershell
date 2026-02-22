@@ -16,14 +16,14 @@ Describe "Module Public API Surface" {
         "Invoke-SANtricityRequest",
         
         # Get
-        "Get-SANtricityVolumes",
-        "Get-SANtricityStoragePools",
-        "Get-SANtricityHosts",
-        "Get-SANtricityHostGroups",
-        "Get-SANtricityVolumeMappings",
+        "Get-SANtricityVolume",
+        "Get-SANtricityStoragePool",
+        "Get-SANtricityHost",
+        "Get-SANtricityHostGroup",
+        "Get-SANtricityVolumeMapping",
         "Get-SANtricityMappingsReport",
         "Show-SANtricityMappingsReportFormatted",
-        "Get-SANtricityTargets",
+        "Get-SANtricityTarget",
         "Get-SANtricityOdxStatus",
 
         # Volume Management

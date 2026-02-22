@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     This script performs a typical DevTest refresh workflow:
-    1. Quiesces a database (mock command).
+    1. Quiesces a PostgreSQL database (backup mode).
     2. Takes a storage snapshot (Point-in-Time).
     3. Unquiesces the database immediately.
     4. Creates a writable linked clone (Snapshot Volume) from that snapshot.
@@ -19,9 +19,9 @@
 # Configuration
 $ControllerUrl    = "https://192.168.1.100:8443"
 $Creds            = Get-Credential # Prompt for credentials securely
-$SourceVolName    = "Production_SQL_Data"
-$CloneName        = "Dev_SQL_Clone"
-$TestHostName     = "WinServer-Dev-01"
+$SourceVolName    = "Production_PG_Data"
+$CloneName        = "Dev_PG_Clone"
+$TestHostName     = "Linux-Dev-01"
 $WebhookUrl       = "https://hooks.slack.com/services/..."
 
 # Helper to send Webhooks
@@ -43,10 +43,33 @@ $hostMatch = Get-SANtricityHost | Where-Object Name -eq $TestHostName
 if (-not $srcVol) { Throw "Source volume '$SourceVolName' not found." }
 if (-not $hostMatch) { Throw "Test host '$TestHostName' not found." }
 
-# 3. Application Quiesce (Mock)
-Write-Host "Freezing SQL I/O..." -ForegroundColor Yellow
-# Invoke-SqlCmd -Query "ALTER DATABASE [MyDb] SET SUSPEND_FOR_SNAPSHOT_BACKUP = ON" ...
-Start-Sleep -Seconds 2 # Simulating brief freeze
+# 3. Application Quiesce (PostgreSQL Example)
+Write-Host "Freezing PostgreSQL I/O..." -ForegroundColor Yellow
+
+# Configuration (Adjust as needed)
+$pgUser = "postgres" 
+# $pgDb   = "production_db" 
+$label  = "santricity_snap_$(Get-Date -Format 'yyyyMMddHHmm')"
+
+try {
+    # 3a. Start Backup Mode (PostgreSQL 15+ Syntax)
+    # 'pg_backup_start' prepares for physical backup. 'fast=true' forces an immediate checkpoint.
+    # For older versions (9.x-14.x), use: SELECT pg_start_backup('$label', true, false);
+    
+    $cmdStart = "SELECT pg_backup_start('$label', true);"
+    
+    Write-Verbose "Executing: $cmdStart"
+    # We use Invoke-Expression or direct execution. Assuming 'psql' is in PATH.
+    # psql -U $pgUser -c "$cmdStart"
+    
+    Write-Host "PostgreSQL is in backup mode (Mock/Commented for safety)." -ForegroundColor Green
+    # To enable: Uncomment the psql line above or implement actual call.
+    # Verify execution success before proceeding!
+
+} catch {
+    Write-Error "Quiesce failed: $_"
+    exit 1
+}
 
 try {
     # 4. Take Snapshot (Instant)
@@ -59,8 +82,18 @@ try {
 
 } finally {
     # 5. Application Unquiesce (Always run this!)
-    Write-Host "Thawing SQL I/O..." -ForegroundColor Yellow
-    # Invoke-SqlCmd -Query "ALTER DATABASE [MyDb] SET SUSPEND_FOR_SNAPSHOT_BACKUP = OFF" ...
+    Write-Host "Unfreezing PostgreSQL I/O..." -ForegroundColor Yellow
+
+    # 5a. Stop Backup Mode (PostgreSQL 15+ Syntax)
+    # 'pg_backup_stop' stops the backup mode and writes label file.
+    # For older versions, use pg_stop_backup().
+    
+    $cmdStop = "SELECT pg_backup_stop(true);"
+    
+    Write-Verbose "Executing cleanup: $cmdStop"
+    # psql -U $pgUser -c "$cmdStop"
+
+    Write-Host "PostgreSQL backup mode stopped (Mock/Commented)." -ForegroundColor Green
 }
 
 # 6. Create Linked Clone (Snapshot Volume)

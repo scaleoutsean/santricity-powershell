@@ -1,3 +1,4 @@
 PowerShellRich/
 PowerShellRich.psd1
 references/
+santricity/Tests/PublicAPIWorkflow.Tests.ps1

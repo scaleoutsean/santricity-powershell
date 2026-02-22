@@ -40,4 +40,4 @@ jobs:
             Install-Module -Name Pester -Force -Scope CurrentUser -SkipPublisherCheck
           }
           Import-Module ./santricity/santricity.psd1 -Force
-          Invoke-Pester -Script Tests -Passthru
+          Invoke-Pester -Script santricity/Tests -Passthru
