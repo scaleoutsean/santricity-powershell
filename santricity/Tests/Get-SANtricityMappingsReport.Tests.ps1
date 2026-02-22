@@ -1,6 +1,6 @@
 Describe 'santricity module basic' {
     BeforeAll {
-        $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'santricity/santricity.psd1'
+        $modulePath = Join-Path $PSScriptRoot '../santricity.psd1'
         Import-Module $modulePath -Force
     }
 

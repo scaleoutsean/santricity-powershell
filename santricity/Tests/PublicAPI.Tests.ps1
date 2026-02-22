@@ -6,7 +6,7 @@ Validates that all Public cmdlets are exported and have basic help content.
 Describe "Module Public API Surface" {
     
     BeforeAll {
-        $modulePath = Join-Path $PSScriptRoot "../santricity/santricity.psd1"
+        $modulePath = Join-Path $PSScriptRoot "../santricity.psd1"
         Import-Module $modulePath -Force
     }
 
