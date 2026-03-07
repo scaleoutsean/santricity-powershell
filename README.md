@@ -6,7 +6,7 @@ SANtricity PowerShell helper
 Minimal PowerShell 7 module providing lightweight helpers to call a SANtricity
 REST API and produce a mappings report similar to the Python client (`santricity-client`).
 
-It has been tested with PowerShell 7.5 and 7.6 (Preview 6). It is aimed at Day 1+ operations on DDP (pools) to avoid the complexity of RAID groups.
+It has been tested with PowerShell 7.5 and 7.6. It is aimed at Day 1+ operations on DDP (pools) to avoid the complexity of RAID groups.
 
 Usage (PowerShell 7):
 
@@ -26,22 +26,40 @@ $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin
 # For production with controller or CA pinning (legacy pipeline implied when using -TrustedCertificate):
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-or-ca-chain.pem' -Verbose
 
+# Get volumes
+$vols = Get-SANtricityVolume
+# Use metadata values (from SANtricity CSI, or own)
+$vols[0].metadata['pvc_name'] # Metadata is parsed into a hashtable for easy access
 Get-SANtricityVolume -Verbose
+# Get 100GB volumes
 Get-SANtricityVolume -Size "100GB"
+Get-SANtricityVolume -SizeMin "50GiB" -SizeMax "200GiB"
+# Get volumes with a specific metadata key (inserted by SANtricity CSI or your own app)
+Get-SANtricityVolume -MetadataKey 'pvc_name'
+# Get volumes with a specific metadata key and value
+Get-SANtricityVolume -MetadataKey 'fstype' -MetadataValue 'xfs'
+# Get volumes where any metadata value matches 'default'
+Get-SANtricityVolume -MetadataValue 'default'
+Get-SANtricityVolume -MetadataKey pvc_namespace -MetadataValue postgres
+# Accessing metadata on the result
+$vol = Get-SANtricityVolume -Name 'my-vol'
+Write-Host "PVC Name: $($vol.metadata['pvc_name'])"
 
+# Get volume-to-host mappings
 Get-SANtricityMappingsReport | Format-Table -AutoSize
 Get-SANtricityMappingsReport -Host "ha_group_.*"
 Get-SANtricityMappingsReport -Volume "db_vol_.*"
-
 Show-SANtricityMappingsReportFormatted -Host "server1"
-
 Get-SANtricityVolumeMapping -Type cluster
 
+# Get storage pool(s) 
 Get-SANtricityStoragePool -RaidLevel "raidDiskPool"
 Get-SANtricityStoragePool -Name "Pool_A"
 
+# Create report for vCenter volumes
 Get-SANtricityMappingsReport -Volume "vcenter1_" | Format-Table
 
+# Get commands
 Get-Command -Module santricity
 ```
 
