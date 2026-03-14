@@ -24,6 +24,7 @@ $PgCreds          = Get-Credential -Message "PostgreSQL User Credentials"
 $SourceVolName    = "Production_PG_Data"
 $CloneName        = "Dev_PG_Clone"
 $TestHostName     = "Linux-Dev-01"
+$PsqlPath         = "psql" # Use "psql" if in PATH, or full path e.g. "C:\Program Files\PostgreSQL\18\bin\psql.exe"
 $WebhookUrl       = "https://hooks.slack.com/services/..."
 
 # Helper to send Webhooks
@@ -62,10 +63,11 @@ try {
     $cmdStart = "SELECT pg_backup_start('$label', true);"
     
     Write-Verbose "Executing: $cmdStart"
-    # psql -U $pgUser -c "$cmdStart"
+    # Execute psql using the configured path (Invoke-Expression or Call Operator &)
+    # & $PsqlPath -U $pgUser -c "$cmdStart"
     
     Write-Host "PostgreSQL is in backup mode (Mock/Commented for safety)." -ForegroundColor Green
-    # To enable: Uncomment the psql line above or implement actual call.
+    # To enable: Uncomment the psql line above.
     # Verify execution success before proceeding!
 
 } catch {
@@ -93,7 +95,7 @@ try {
     $cmdStop = "SELECT pg_backup_stop(true);"
     
     Write-Verbose "Executing cleanup: $cmdStop"
-    # psql -U $pgUser -c "$cmdStop"
+    # & $PsqlPath -U $pgUser -c "$cmdStop"
 
     Write-Host "PostgreSQL backup mode stopped (Mock/Commented)." -ForegroundColor Green
 }
