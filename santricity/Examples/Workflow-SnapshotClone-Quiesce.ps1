@@ -18,7 +18,9 @@
 
 # Configuration
 $ControllerUrl    = "https://192.168.1.100:8443"
-$Creds            = Get-Credential # Prompt for credentials securely
+$Creds            = Get-Credential -Message "SANtricity Admin Credentials"
+$PgCreds          = Get-Credential -Message "PostgreSQL User Credentials"
+# $PgPass # supply as .pgpass in user's directory or $env:PGPASSWORD environment variable for security
 $SourceVolName    = "Production_PG_Data"
 $CloneName        = "Dev_PG_Clone"
 $TestHostName     = "Linux-Dev-01"
@@ -34,7 +36,7 @@ function Send-SlackNotification ($Message) {
 }
 
 # 1. Connect
-Connect-SANtricity -Url $ControllerUrl -Credential $Creds -IgnoreCertErrors
+Connect-SANtricity -BaseUrl $ControllerUrl -Credential $Creds -SkipCertificateCheck
 
 # 2. Identify Resources
 $srcVol = Get-SANtricityVolume | Where-Object Name -eq $SourceVolName
@@ -47,7 +49,8 @@ if (-not $hostMatch) { Throw "Test host '$TestHostName' not found." }
 Write-Host "Freezing PostgreSQL I/O..." -ForegroundColor Yellow
 
 # Configuration (Adjust as needed)
-$pgUser = "postgres" 
+$pgUser = $PgCreds.UserName
+$env:PGPASSWORD = $PgCreds.GetNetworkCredential().Password
 # $pgDb   = "production_db" 
 $label  = "santricity_snap_$(Get-Date -Format 'yyyyMMddHHmm')"
 
@@ -59,7 +62,6 @@ try {
     $cmdStart = "SELECT pg_backup_start('$label', true);"
     
     Write-Verbose "Executing: $cmdStart"
-    # We use Invoke-Expression or direct execution. Assuming 'psql' is in PATH.
     # psql -U $pgUser -c "$cmdStart"
     
     Write-Host "PostgreSQL is in backup mode (Mock/Commented for safety)." -ForegroundColor Green

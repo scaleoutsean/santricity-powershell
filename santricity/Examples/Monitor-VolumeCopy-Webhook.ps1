@@ -24,7 +24,7 @@ $WebhookUrl    = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXX
 
 # 1. Connect
 Write-Host "Connecting to array..." -ForegroundColor Cyan
-Connect-SANtricity -Url $ControllerUrl -User $User -Password $Pass -IgnoreCertErrors
+Connect-SANtricity -BaseUrl $ControllerUrl -User $User -Password $Pass -SkipCertificateCheck
 
 # 2. Get Volume IDs
 Write-Host "Resolving volumes..." -ForegroundColor Cyan

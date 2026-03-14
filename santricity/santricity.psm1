@@ -122,12 +122,14 @@ function Connect-SANtricity {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)] [Alias('BaseUrls')] [object] $BaseUrl,
-        [string] $Username,
-        [string] $Password,
+        [Parameter(Mandatory = $true)] [Alias('BaseUrls', 'Url')] [object] $BaseUrl,
+        [Alias('User')] [string] $Username,
+        [Alias('Pass')] [string] $Password,
         [string] $Token,
+        [pscredential] $Credential,
         [ValidateSet('Basic','Jwt')] [string] $Auth = 'Basic',
         [object] $VerifySsl = $true,
+        [Alias('IgnoreCertErrors')] [switch] $SkipCertificateCheck,
         [string] $TrustedCertificate,
         [string] $ApiBasePathPrefix = 'devmgr/v2',
         [string] $AuthBasicPath = 'devmgr/utils',
@@ -139,6 +141,12 @@ function Connect-SANtricity {
         [switch] $SkipLogin,
         [switch] $UseLegacyHttpClient
     )
+
+    if ($SkipCertificateCheck) { $VerifySsl = $false }
+    if ($Credential) {
+        $Username = $Credential.UserName
+        $Password = $Credential.GetNetworkCredential().Password
+    }
 
     if ([string]::IsNullOrWhiteSpace($ApiBasePathPrefix)) { $ApiBasePathPrefix = 'devmgr/v2' }
     else { $ApiBasePathPrefix = $ApiBasePathPrefix.Trim('/') }
