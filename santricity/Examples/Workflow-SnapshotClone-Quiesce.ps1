@@ -102,10 +102,18 @@ try {
 
 # 6. Create Linked Clone (Snapshot Volume)
 Write-Host "Creating Writable Clone '$CloneName'..." -ForegroundColor Cyan
-# Linked clones are instant. 
-# We request ReadWrite access so Devs can modify it without affecting Produciton.
-# Note: $snap.id is the snapshot image reference.
-$clone = New-SANtricityClone -SnapshotImageId $snap.id -Name $CloneName -AccessMode ReadWrite
+
+# Check if clone already exists to avoid 422 error
+$existingClone = Get-SANtricityClone | Where-Object { $_.label -eq $CloneName }
+if ($existingClone) {
+    Write-Warning "Clone '$CloneName' already exists. Skipping creation."
+    $clone = $existingClone
+} else {
+    # Linked clones are instant. 
+    # We request ReadWrite access so Devs can modify it without affecting Produciton.
+    # Note: $snap.id is the snapshot image reference.
+    $clone = New-SANtricityClone -SnapshotImageId $snap.id -Name $CloneName -AccessMode ReadWrite
+}
 
 if ($clone) {
     Write-Host "Clone Created: $($clone.wwn)" -ForegroundColor Green
