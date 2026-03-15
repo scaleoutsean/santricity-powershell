@@ -94,8 +94,6 @@ do {
     }
 } while ($true)
 
-} while ($true)
-
 # 5. Send Webhook Notification
 Write-Host "Copy Complete. Sending Webhook..." -ForegroundColor Cyan
 $payload = @{

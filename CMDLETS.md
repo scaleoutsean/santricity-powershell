@@ -58,16 +58,16 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Get-SANtricitySnapshotGroup` | **Stable** | Gets snapshot groups (single volume). Supports filter by Name/BaseVolume. |
 | `New-SANtricitySnapshotGroup` | **Stable** | Creates snapshot groups. |
 | `New-SANtricitySnapshot` | **Stable** | Creates instant snapshot. Auto-creates group if `-Force` is used. Supports Consistency Groups. |
-| `Get-SANtricitySnapshotImage` | **Stable** | Lists snapshots. Supports `-Newest`/`-Oldest` sorting. |
-| `Remove-SANtricitySnapshotImage` | **Stable** | Deletes snapshots. Supports `-Oldest` deletion strategy. |
+| `Get-SANtricitySnapshot` | **Stable** | Lists snapshots. Supports `-Newest`/`-Oldest` sorting. |
+| `Remove-SANtricitySnapshot` | **Stable** | Deletes snapshots. Supports `-Oldest` deletion strategy. |
 | `Get-SANtricityClone` | **Stable** | Lists clones/views. |
 | `New-SANtricityClone` | **Stable** | Creates clone. Defaults to Read-Only (View). |
 | `Update-SANtricityClone` | **Stable** | Refreshes clone data from source snapshot (Re-Flash). |
 | `Remove-SANtricityClone` | **Stable** | Deletes clone and stops associated views. |
-| `New-SANtricityVolumeCopy` | **Beta** | Creates full physical copy. Supports `-OnlineCopy` and `RespositoryPercentage`. |
-| `Get-SANtricityVolumeCopy` | **Beta** | Gets copy config or live progress (`-Progress`). |
-| `Stop-SANtricityVolumeCopy` | **Beta** | Aborts running copy jobs. |
-| `Remove-SANtricityVolumeCopy` | **Beta** | Deletes the volume copy pair relationship. |
+| `New-SANtricityVolumeCopy` | **Stable** | Creates full physical copy. Supports `-OnlineCopy` and `ClearOnCompletion`. |
+| `Get-SANtricityVolumeCopy` | **Stable** | Gets copy config or live progress (`-Progress`). |
+| `Stop-SANtricityVolumeCopy` | **Stable** | Aborts running copy jobs. |
+| `Remove-SANtricityVolumeCopy` | **Stable** | Deletes the volume copy pair relationship (Job). |
 | `Get-SANtricityConsistencyGroup` | **Beta** | Lists multi-volume consistency groups. |
 | `New-SANtricityConsistencyGroup` | **Beta** | Creates consistency groups with batch member addition. |
 | `New-SANtricityConsistencyGroupView` | **Beta** | Creates consistency group views (linked clones). |

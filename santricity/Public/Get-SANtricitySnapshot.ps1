@@ -1,5 +1,5 @@
 
-function Get-SANtricitySnapshotImage {
+function Get-SANtricitySnapshot {
     <#
     .SYNOPSIS
     Retrieves snapshot images (point-in-time copies) from the array.
@@ -23,11 +23,11 @@ function Get-SANtricitySnapshotImage {
     If specified, returns only the single oldest snapshot.
 
     .EXAMPLE
-    Get-SANtricitySnapshotImage
+    Get-SANtricitySnapshot
     List all snapshot images.
 
     .EXAMPLE
-    Get-SANtricitySnapshotImage -GroupId "3300..." -Newest
+    Get-SANtricitySnapshot -GroupId "3300..." -Newest
     Get the most recent snapshot for a specific group.
     #>
     [CmdletBinding()]

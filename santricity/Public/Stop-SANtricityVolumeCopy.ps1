@@ -7,11 +7,12 @@ function Stop-SANtricityVolumeCopy {
     Aborts a running Volume Copy operation.
     The target volume may be left in an inconsistent or unusable state depending on the progress.
 
-    .PARAMETER VolumeCopyId
-    One or more Volume Copy IDs (Ref or WWN) to stop.
+    .PARAMETER Id
+    One or more Volume Copy IDs (Job Ref) to stop.
+    Note: This is the Job ID, not the Volume ID.
 
     .EXAMPLE
-    Stop-SANtricityVolumeCopy -VolumeCopyId "0200..."
+    Stop-SANtricityVolumeCopy -Id "1800..."
     
     .EXAMPLE
     Get-SANtricityVolumeCopy | Where-Object { $_.copyPriority -eq 'priority0' } | Stop-SANtricityVolumeCopy
@@ -19,24 +20,25 @@ function Stop-SANtricityVolumeCopy {
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [string[]]$VolumeCopyId
+        [Alias("VolumeCopyId", "volcopyRef", "JobId")]
+        [string[]]$Id
     )
 
     process {
-        foreach ($id in $VolumeCopyId) {
-            if ($PSCmdlet.ShouldProcess($id, "Stop Volume Copy Job")) {
+        foreach ($i in $Id) {
+            if ($PSCmdlet.ShouldProcess($i, "Stop Volume Copy Job")) {
                 try {
                     # URI: /volume-copy-jobs-control/{id}?control=stop
                     # The "?" must be escaped or handled carefully in some contexts, but simple string interpolation works.
-                    $uri = "/volume-copy-jobs-control/${id}?control=stop"
+                    $uri = "/volume-copy-jobs-control/${i}?control=stop"
                     
                     # POST with empty body (action is in query param)
                     $null = Invoke-SANtricityRequest -Method 'POST' -Path $uri
                     
-                    Write-Verbose "Successfully stopped Volume Copy job $id"
+                    Write-Verbose "Successfully stopped Volume Copy job $i"
                 }
                 catch {
-                    Write-Error "Failed to stop Volume Copy job $id : $_"
+                    Write-Error "Failed to stop Volume Copy job $i : $_"
                 }
             }
         }

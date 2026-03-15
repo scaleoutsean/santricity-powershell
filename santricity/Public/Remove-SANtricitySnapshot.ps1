@@ -1,5 +1,5 @@
 
-function Remove-SANtricitySnapshotImage {
+function Remove-SANtricitySnapshot {
     <#
     .SYNOPSIS
     Deletes a snapshot image.
@@ -22,10 +22,10 @@ function Remove-SANtricitySnapshotImage {
     Filter by Base Volume ID. Can be used with -Oldest to find the oldest snapshot for a volume.
 
     .EXAMPLE
-    Remove-SANtricitySnapshotImage -Id "34000..."
+    Remove-SANtricitySnapshot -Id "34000..."
 
     .EXAMPLE
-    Remove-SANtricitySnapshotImage -GroupId "33000..." -Oldest
+    Remove-SANtricitySnapshot -GroupId "33000..." -Oldest
     Safely removes the oldest snapshot in the group (required deletion order).
     #>
     [CmdletBinding(DefaultParameterSetName = 'ById', SupportsShouldProcess = $true)]
@@ -50,7 +50,7 @@ function Remove-SANtricitySnapshotImage {
             }
 
             Write-Verbose "Finding the oldest snapshot..."
-            $oldestSnap = Get-SANtricitySnapshotImage -GroupId $GroupId -BaseVolumeId $BaseVolumeId -Oldest
+            $oldestSnap = Get-SANtricitySnapshot -GroupId $GroupId -BaseVolumeId $BaseVolumeId -Oldest
             
             if (-not $oldestSnap) {
                 Write-Warning "No snapshots found matching the specified criteria."

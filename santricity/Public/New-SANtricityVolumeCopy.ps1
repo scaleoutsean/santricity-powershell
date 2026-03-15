@@ -32,16 +32,21 @@ function New-SANtricityVolumeCopy {
     If set, blocks write I/O to the target volume while the copy job exists.
     
     .PARAMETER OnlineCopy
-    If set, creates a snapshot of the source volume to perform the copy, allowing the source
+    If set, creates a snaphot of the source volume to perform the copy, allowing the source
     volume to remain online and writable during the copy process.
-    Requires available repository capacity on the source pool (system will automatically select best candidate).
+    Note: The API response will show a `sourceVolume` ID corresponding to this internal snapshot, not the base volume ID.
+
+    .PARAMETER ClearOnCompleton
+    If specified, the volume copy relationship (job) is automatically deleted after the copy completes successfully.
+    This releases the target volume for future copy operations without requiring manual cleanup.
+    Default is usually False (persistent relationship).
 
     .PARAMETER RepositoryPercentage
     Specific percentage of the base volume capacity to allocate for the copy-on-write repository.
     Only valid when -OnlineCopy is specified. Default is 20 if not specified.
 
     .EXAMPLE
-    New-SANtricityVolumeCopy -SourceVolumeId "0200..." -TargetVolumeId "0201..." -CopyPriority Priority3 -OnlineCopy
+    New-SANtricityVolumeCopy -SourceVolumeId "0200..." -TargetVolumeId "0201..." -CopyPriority Priority3 -OnlineCopy -ClearOnCompletion
     #>
     [CmdletBinding()]
     param(
@@ -62,6 +67,9 @@ function New-SANtricityVolumeCopy {
         [switch]$OnlineCopy,
 
         [Parameter(Mandatory = $false)]
+        [switch]$ClearOnCompletion,
+
+        [Parameter(Mandatory = $false)]
         [int]$RepositoryPercentage = 20
     )
 
@@ -71,11 +79,12 @@ function New-SANtricityVolumeCopy {
         }
 
         $body = @{
-            sourceId             = $SourceVolumeId
-            targetId             = $TargetVolumeId
-            copyPriority         = "priority$($CopyPriority.Replace('Priority',''))" # API expects priority0..4
-            targetWriteProtected = $TargetWriteProtected.IsPresent
-            onlineCopy           = $OnlineCopy.IsPresent
+            sourceId              = $SourceVolumeId
+            targetId              = $TargetVolumeId
+            copyPriority          = "priority$($CopyPriority.Replace('Priority',''))" # API expects priority0..4
+            targetWriteProtected  = $TargetWriteProtected.IsPresent
+            onlineCopy            = $OnlineCopy.IsPresent
+            autoClearOnCompletion = $ClearOnCompletion.IsPresent
         }
         
         if ($OnlineCopy.IsPresent) {

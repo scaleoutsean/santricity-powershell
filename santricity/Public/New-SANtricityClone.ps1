@@ -10,7 +10,7 @@ function New-SANtricityClone {
 
     .PARAMETER SnapshotImageId
     The unique identifier (PitRef) of the snapshot image to use as the base.
-    You can retrieve this from Get-SANtricitySnapshotImage (not yet implemented) or New-SANtricitySnapshot.
+    You can retrieve this from Get-SANtricitySnapshot or New-SANtricitySnapshot.
 
     .PARAMETER Name
     The name (label) for the new snapshot volume.
