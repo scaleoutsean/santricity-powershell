@@ -12,6 +12,9 @@ function Get-SANtricityVolume {
     .PARAMETER IncludeSystem
     If specified, includes all volume types, including internal repository volumes.
 
+    .PARAMETER Id
+    Retrieve a specific volume by its unique identifier (Ref).
+
     .PARAMETER Name
     Filter by Volume Name (wildcards supported).
 
@@ -42,8 +45,13 @@ function Get-SANtricityVolume {
     #>
     [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$false)]
         [switch]$IncludeSystem,
         
+        [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+        [Alias("Id")]
+        [string]$VolumeRef,
+
         [Parameter(Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
         [string]$Name,
         
@@ -67,6 +75,21 @@ function Get-SANtricityVolume {
     )
 
     process {
+        if ($VolumeRef) {
+            # Direct fetch by ID (VolumeRef)
+            # This is more efficient and avoids filtering later
+            try {
+                return Invoke-SANtricityRequest -Method 'GET' -Path "/volumes/$VolumeRef"
+            } catch {
+                # If 404, usually PowerShell style: Write-Error if specific ID requested and not found.
+                if ($_.Exception.Message -match "404") {
+                    Write-Error "Volume with ID '$VolumeRef' not found."
+                    return $null
+                }
+                throw $_
+            }
+        }
+
         # Fetch all volumes first
         $vols = Invoke-SANtricityRequest -Method 'GET' -Path '/volumes'
         

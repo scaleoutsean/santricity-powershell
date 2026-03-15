@@ -11,7 +11,10 @@
     5. Sends a Webhook notification (e.g., to Slack, Discord, or Teams) upon completion.
 
 .NOTES
-    Adjust the $WebhookUrl and volume names before running.
+    You should first understand Volume Copy https://docs.netapp.com/us-en/e-series-cli/commands-a-z/create-volumecopy.html#context.    
+    Adjust the $WebhookUrl and volume names before running. 
+    Get-SANtricityVolumeCopy -Progress is used to retrieve real-time progress updates.
+    
 #>
 
 # Configuration
@@ -40,40 +43,56 @@ if (-not $srcVol -or -not $dstVol) {
 Write-Host "Starting Volume Copy from '$SourceVolName' to '$TargetVolName'..." -ForegroundColor Green
 # Using -OnlineCopy to keep source available/writable during copy
 # Using -RepositoryPercentage 5 to override default 20% if we want to save space
-New-SANtricityVolumeCopy -SourceVolumeId $srcVol.id -TargetVolumeId $dstVol.id -CopyPriority Priority3 -OnlineCopy -RepositoryPercentage 5
+$job = New-SANtricityVolumeCopy -SourceVolumeId $srcVol.id -TargetVolumeId $dstVol.id -CopyPriority Priority3 -OnlineCopy -RepositoryPercentage 5
+
+if (-not $job.volcopyRef) {
+    Write-Error "Failed to start copy job or parse response."
+    return
+}
+$copyJobId = $job.volcopyRef
+Write-Host "Copy Job Started. ID: $copyJobId" -ForegroundColor Cyan
 
 # 4. Monitor Progress
 Write-Host "Monitoring copy progress..." -ForegroundColor Yellow
-$jobId = $null
 
 do {
-    Start-Sleep -Seconds 10
+    Start-Sleep -Seconds 5
     
-    # Retrieve active copy jobs with progress
-    $jobs = Get-SANtricityVolumeCopy -Progress
-    
-    # Filter for our specific pair
-    $ourJob = $jobs | Where-Object { $_.volcopyRef -eq $dstVol.id -or $_.targetVolume -eq $dstVol.id } 
-
-    if ($ourJob) {
-        $pct = $ourJob.percentComplete
-        $timeLeft = $ourJob.timeToCompletion
-        Write-Host "Copy Progress: $pct% (Time Remaining: $timeLeft min)" -NoNewline -ForegroundColor Gray
-        Write-Host "`r" -NoNewline
+    # Check PRIMARY STATUS from persistent endpoint first
+    try {
+        $statusJob = Get-SANtricityVolumeCopy -VolumeCopyId $copyJobId -ErrorAction Stop
         
-        $jobId = $ourJob.volumeCopyId # Capture for reference
-        
-        # Check if complete (API might return 100% or remove the job when done)
-        if ($pct -eq 100) { break }
-    }
-    else {
-        # Job not found usually means it finished or hasn't started yet.
-        # If we saw it before, it's finished.
-        if ($jobId) {
-            Write-Host "`nJob no longer reported active. Assuming completion." -ForegroundColor Green
+        if ($statusJob.status -eq 'complete') {
+            Write-Host "`nCopy Job Complete (Status: $($statusJob.status))" -ForegroundColor Green
             break
         }
+        
+        if ($statusJob.status -eq 'failed' -or $statusJob.status -eq 'halted') {
+            Write-Error "`nCopy Job Failed or Halted! Status: $($statusJob.status)"
+            return
+        }
+    } catch {
+        # If specific ID fetch fails, it might be truly gone or network glitch.
+        Write-Warning "Could not retrieve job status. Retrying..."
+        continue
     }
+
+    # Retrieve PROGRESS from control endpoint (transient)
+    # Use generic list because transient jobs might disappear from list
+    $progressJobs = Get-SANtricityVolumeCopy -Progress
+    $ourProgress = $progressJobs | Where-Object { $_.volumeCopyId -eq $copyJobId } 
+
+    if ($ourProgress) {
+        $pct = $ourProgress.percentComplete
+        $timeLeft = $ourProgress.timeToCompletion
+        
+        # Check for the misleading "-1" percentComplete which can indicate done/starting
+        if ($pct -eq -1) { $pct = "Pending/Done" }
+        
+        Write-Host "Copy Progress: $pct% (Time Remaining: $timeLeft min)   " -NoNewline -ForegroundColor Gray
+        Write-Host "`r" -NoNewline
+    }
+} while ($true)
 
 } while ($true)
 
