@@ -28,7 +28,12 @@ function Get-SANtricityMappingsReport {
         )
 
         try {
-            return @(& $operation)
+            $cmdResult = & $operation
+            # Ensure multi-element arrays are correctly unrolled by returning exactly what was produced.
+            # If we wrap it in `@()` prematurely while it already is an Array[], it can become a nested array (`Object[]`).
+            if ($null -eq $cmdResult) { return @() }
+            if ($cmdResult -is [System.Array]) { return $cmdResult }
+            return @($cmdResult)
         } catch {
             $msg = "Get-SANtricityMappingsReport failed while retrieving $description ($path). $($_.Exception.Message)"
             throw $msg
@@ -62,8 +67,16 @@ function Get-SANtricityMappingsReport {
         if ($null -eq $value) { return }
         $text = [string]$value
         if ([string]::IsNullOrWhiteSpace($text)) { return }
-        $key = Normalize-SANtricityId -Id $text
-        if (-not $key) { $key = $text }
+        
+        $cfg = $script:SANtricity_Config
+        $key = $text
+        if ($cfg -and ($cfg.PSObject.Properties.Name -contains 'IdCase')) {
+            switch ($cfg.IdCase) {
+                'upper' { $key = $text.ToUpperInvariant() }
+                'lower' { $key = $text.ToLowerInvariant() }
+            }
+        }
+
         $dict[$key] = $payload
     }
 
@@ -76,8 +89,16 @@ function Get-SANtricityMappingsReport {
         if (-not $dict -or $dict.Count -eq 0 -or $null -eq $value) { return $null }
         $text = [string]$value
         if ([string]::IsNullOrWhiteSpace($text)) { return $null }
-        $key = Normalize-SANtricityId -Id $text
-        if (-not $key) { $key = $text }
+        
+        $cfg = $script:SANtricity_Config
+        $key = $text
+        if ($cfg -and ($cfg.PSObject.Properties.Name -contains 'IdCase')) {
+            switch ($cfg.IdCase) {
+                'upper' { $key = $text.ToUpperInvariant() }
+                'lower' { $key = $text.ToLowerInvariant() }
+            }
+        }
+        
         if ($dict.ContainsKey($key)) { return $dict[$key] }
         return $null
     }
@@ -112,7 +133,7 @@ function Get-SANtricityMappingsReport {
 
     $hostByRef = [Dictionary[string,object]]::new()
     foreach ($h in $hosts) {
-        foreach ($candidate in @($h.hostRef,$h.id,$h.clusterRef)) {
+        foreach ($candidate in @($h.hostRef,$h.id)) {
             & $registerKey $hostByRef $candidate $h
         }
     }
@@ -129,20 +150,20 @@ function Get-SANtricityMappingsReport {
         $row = [ordered]@{}
         foreach ($prop in $m.PSObject.Properties) { $row[$prop.Name] = $prop.Value }
 
-        $volume = $null
+        $matchedVol = $null
         foreach ($vid in @($m.volumeRef,$m.mappableObjectId,$m.mappableObjectRef,$m.mappableObject)) {
-            $volume = & $resolveLookup $volById $vid
-            if ($volume) { break }
+            $matchedVol = & $resolveLookup $volById $vid
+            if ($matchedVol) { break }
         }
 
-        if ($volume) {
-            $volName = & $firstPresent @($volume.name,$volume.label,$volume.volumeName,$volume.mappableObjectName,$volume.mappableObjectLabel)
+        if ($matchedVol) {
+            $volName = & $firstPresent @($matchedVol.name,$matchedVol.label,$matchedVol.volumeName,$matchedVol.mappableObjectName,$matchedVol.mappableObjectLabel)
             if ($volName) { $row['mappableObjectName'] = $volName }
 
-            $capacityValue = & $firstPresent @($volume.capacity,$volume.reportedSize,$volume.currentVolumeSize,$volume.totalSizeInBytes)
+            $capacityValue = & $firstPresent @($matchedVol.capacity,$matchedVol.reportedSize,$matchedVol.currentVolumeSize,$matchedVol.totalSizeInBytes)
             if ($capacityValue) { $row['capacity'] = $capacityValue }
 
-            $poolIdCandidate = & $firstPresent @($volume.volumeGroupRef,$volume.poolId,$volume.storagePoolId,$volume.volumeGroupId)
+            $poolIdCandidate = & $firstPresent @($matchedVol.volumeGroupRef,$matchedVol.poolId,$matchedVol.storagePoolId,$matchedVol.volumeGroupId)
             if ($poolIdCandidate) {
                 $pool = & $resolveLookup $poolById $poolIdCandidate
                 if ($pool) {
@@ -160,7 +181,7 @@ function Get-SANtricityMappingsReport {
                         }
                         if ($firstExtent -and $firstExtent.raidLevel) { $raidValue = $firstExtent.raidLevel }
                     }
-                    if (-not $raidValue -and $volume.raidLevel) { $raidValue = $volume.raidLevel }
+                    if (-not $raidValue -and $matchedVol.raidLevel) { $raidValue = $matchedVol.raidLevel }
                     if ($raidValue) { $row['raidLevel'] = $raidValue }
                 }
             }
