@@ -3,14 +3,14 @@ function Show-SANtricityMappingsReportFormatted {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
-        [string]$Host,
+        [string]$HostName,
 
         [Parameter(ValueFromPipelineByPropertyName=$true)]
         [string]$Volume
     )
 
     $params = @{}
-    if ($Host) { $params['Host'] = $Host }
+    if ($HostName) { $params['HostName'] = $HostName }
     if ($Volume) { $params['Volume'] = $Volume }
 
     $report = Get-SANtricityMappingsReport @params

@@ -14,7 +14,7 @@ function Get-SANtricityMappingsReport {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
-        [string]$Host,
+        [string]$HostName,
 
         [Parameter(ValueFromPipelineByPropertyName=$true)]
         [string]$Volume
@@ -37,7 +37,7 @@ function Get-SANtricityMappingsReport {
 
     # Pass filters down to sub-commands where supported to reduce data transfer
     $hostParams = @{}
-    if (-not [string]::IsNullOrWhiteSpace($Host)) { $hostParams['Name'] = $Host }
+    if (-not [string]::IsNullOrWhiteSpace($HostName)) { $hostParams['Name'] = $HostName }
     $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHost @hostParams }
     
     $volParams = @{}
@@ -205,15 +205,15 @@ function Get-SANtricityMappingsReport {
         if ($targetLabel) { $row['targetLabel'] = $targetLabel }
 
         # Filter: Host/Group Name (Simple Regex)
-        if (-not [string]::IsNullOrWhiteSpace($Host)) {
+        if (-not [string]::IsNullOrWhiteSpace($HostName)) {
             $h = if ($row.Contains('hostLabel')) { $row['hostLabel'] } else { $null }
             $g = if ($row.Contains('hostGroup')) { $row['hostGroup'] } else { $null }
             $t = if ($row.Contains('targetLabel')) { $row['targetLabel'] } else { $null }
             
             $match = $false
-            if ($h -and $h -match $Host) { $match = $true }
-            if (-not $match -and $g -and $g -match $Host) { $match = $true }
-            if (-not $match -and $t -and $t -match $Host) { $match = $true }
+            if ($h -and $h -match $HostName) { $match = $true }
+            if (-not $match -and $g -and $g -match $HostName) { $match = $true }
+            if (-not $match -and $t -and $t -match $HostName) { $match = $true }
             
             if (-not $match) { continue }
         }
