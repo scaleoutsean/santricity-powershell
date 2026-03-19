@@ -35,7 +35,7 @@ function Show-SANtricityMappingsReportFormatted {
         return
     }
 
-    $cols = @('mappingRef','mappableObjectName','capacity','poolName','poolFreeSpace','targetLabel')
+    $cols = @('mappingRef','mappableObjectName','capacity','poolName','poolFreeSpace','targetLabel','isCluster')
     $rows = @(foreach ($r in $report) {
         ,@(
             ($r.mappingRef -as [string]),
@@ -43,7 +43,8 @@ function Show-SANtricityMappingsReportFormatted {
             ($r.capacity -as [string]),
             ($r.poolName -as [string]),
             ($r.poolFreeSpace -as [string]),
-            ($r.targetLabel -as [string])
+            ($r.targetLabel -as [string]),
+            ($r.isCluster -as [string])
         )
     })
 

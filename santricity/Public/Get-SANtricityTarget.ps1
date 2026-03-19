@@ -38,8 +38,9 @@ function Get-SANtricityTarget {
         # --- 1. Gather Context (Target Info) ---
         $results = @()
         
-        # Get System Info for WWN-based name construction fallback
-        $sysInfo = Invoke-SANtricityRequest -Method GET -Path "/storage-systems/1" 
+        # Get System Info for WWN-based name construction fallback.
+        # Invoke-SANtricityRequest automatically scopes paths under /storage-systems/<id>, so path represents the system root.
+        $sysInfo = Invoke-SANtricityRequest -Method GET -Path "/" 
         $baseWwn = $sysInfo.wwn.ToLower()
 
         # --- iSCSI Target Info ---

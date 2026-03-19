@@ -57,6 +57,13 @@ function Get-SANtricityMappingsReport {
     
     $mappings = & $fetch 'volume mappings' '/volume-mappings' { Get-SANtricityVolumeMapping }
 
+    $sysInfo = $null
+    try {
+        $sysInfo = Invoke-SANtricityRequest -Method GET -Path "/"
+    } catch {
+        Write-Verbose "Could not fetch root system info."
+    }
+
     $registerKey = {
         param(
             [Dictionary[string,object]] $dict,
@@ -150,6 +157,13 @@ function Get-SANtricityMappingsReport {
         $row = [ordered]@{}
         foreach ($prop in $m.PSObject.Properties) { $row[$prop.Name] = $prop.Value }
 
+        if ($sysInfo -and $sysInfo.chassisSerialNumber) {
+            $row['chassisSerialNumber'] = $sysInfo.chassisSerialNumber.Trim()
+        }
+        if ($null -ne $m.lun) {
+            $row['lunId'] = $m.lun
+        }
+
         $matchedVol = $null
         foreach ($vid in @($m.volumeRef,$m.mappableObjectId,$m.mappableObjectRef,$m.mappableObject)) {
             $matchedVol = & $resolveLookup $volById $vid
@@ -157,6 +171,14 @@ function Get-SANtricityMappingsReport {
         }
 
         if ($matchedVol) {
+            $row['volumeId'] = $matchedVol.id
+            if ($matchedVol.extendedUniqueIdentifier) {
+                $row['volumeEui'] = $matchedVol.extendedUniqueIdentifier
+            } 
+            if ($matchedVol.wwn) {
+                $row['volumeWwn'] = $matchedVol.wwn
+            }
+
             $volName = & $firstPresent @($matchedVol.name,$matchedVol.label,$matchedVol.volumeName,$matchedVol.mappableObjectName,$matchedVol.mappableObjectLabel)
             if ($volName) { $row['mappableObjectName'] = $volName }
 
@@ -197,6 +219,7 @@ function Get-SANtricityMappingsReport {
         }
 
         $targetLabel = $null
+        $isCluster = $false
         if ($hostMatch) {
             $hostLabel = & $firstPresent @($hostMatch.label,$hostMatch.name,$hostMatch.hostLabel,$hostMatch.hostName)
             if ($hostLabel) {
@@ -206,6 +229,7 @@ function Get-SANtricityMappingsReport {
             $hostRefValue = & $firstPresent @($hostMatch.hostRef,$hostMatch.id,$hostMatch.clusterRef)
             if ($hostRefValue) { $row['hostRef'] = $hostRefValue }
         } elseif ($groupMatch) {
+            $isCluster = $true
             $groupLabel = & $firstPresent @($groupMatch.label,$groupMatch.name,$groupMatch.hostGroupLabel,$groupMatch.clusterName)
             if ($groupLabel) {
                 $row['hostGroup'] = $groupLabel
@@ -223,7 +247,14 @@ function Get-SANtricityMappingsReport {
                 }
             }
         }
+        
+        # Fallback cluster check (if properties are missing but mapping object explicitly states it)
+        if (-not $isCluster -and ($m.type -match 'cluster')) {
+            $isCluster = $true
+        }
+
         if ($targetLabel) { $row['targetLabel'] = $targetLabel }
+        $row['isCluster'] = $isCluster
 
         # Filter: Host/Group Name (Simple Regex)
         if (-not [string]::IsNullOrWhiteSpace($HostName)) {
