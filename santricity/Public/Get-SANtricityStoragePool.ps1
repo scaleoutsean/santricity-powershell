@@ -38,7 +38,7 @@ function Get-SANtricityStoragePool {
             $match = $true
 
             # Filter by Name/Label (Regex)
-            if ($PSBoundParameters.ContainsKey('Name')) {
+            if ($PSBoundParameters.ContainsKey('Name') -and -not [string]::IsNullOrWhiteSpace($Name)) {
                 # API usually provides 'label' or 'name' (often both, identical)
                 $label = if ($p.label) { $p.label } else { $p.name }
                 if (-not ($label -and $label -match $Name)) { $match = $false }
@@ -46,13 +46,13 @@ function Get-SANtricityStoragePool {
 
             # Filter by PoolId (Ref)
             # The storage-pool object usually has 'volumeGroupRef' or 'id'
-            if ($match -and $PSBoundParameters.ContainsKey('PoolId')) {
+            if ($match -and $PSBoundParameters.ContainsKey('PoolId') -and -not [string]::IsNullOrWhiteSpace($PoolId)) {
                 $ref = if ($p.volumeGroupRef) { $p.volumeGroupRef } else { $p.id }
                 if ($ref -ne $PoolId) { $match = $false }
             }
 
             # Filter by RaidLevel
-            if ($match -and $PSBoundParameters.ContainsKey('RaidLevel')) {
+            if ($match -and $PSBoundParameters.ContainsKey('RaidLevel') -and -not [string]::IsNullOrWhiteSpace($RaidLevel)) {
                 if ($p.raidLevel -ne $RaidLevel) { $match = $false }
             }
             

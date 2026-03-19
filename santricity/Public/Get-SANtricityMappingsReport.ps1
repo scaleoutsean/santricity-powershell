@@ -36,17 +36,13 @@ function Get-SANtricityMappingsReport {
     }
 
     # Pass filters down to sub-commands where supported to reduce data transfer
-    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHost -Name $Host }
+    $hostParams = @{}
+    if (-not [string]::IsNullOrWhiteSpace($Host)) { $hostParams['Name'] = $Host }
+    $hosts = & $fetch 'hosts' '/hosts' { Get-SANtricityHost @hostParams }
     
-    # We can't filter volumes by simple regex at the API level via Get-SANtricityVolume yet 
-    # (it does client-side filtering anyway), but we can pass it if we update the call.
-    # However, filtering at the report level after aggregation is often safer for complex reports 
-    # to ensure we don't miss related objects. 
-    # Let's fetch all and filter in memory for the report to ensure all relationships resolve,
-    # OR pass filters to Get-SANtricityVolume to optimize.
-    # Given the previous context, Get-SANtricityVolume -Name does client-side filtering.
-    
-    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolume -Name $Volume }
+    $volParams = @{}
+    if (-not [string]::IsNullOrWhiteSpace($Volume)) { $volParams['Name'] = $Volume }
+    $vols = & $fetch 'volumes' '/volumes' { Get-SANtricityVolume @volParams }
     $pools = & $fetch 'storage pools' '/storage-pools' { Get-SANtricityStoragePool }
     
     # We fetch all groups because we might match a host inside a group even if filtering by host name

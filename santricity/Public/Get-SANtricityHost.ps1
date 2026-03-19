@@ -39,7 +39,7 @@ function Get-SANtricityHost {
             $match = $true
 
             # Filter by Name
-            if ($PSBoundParameters.ContainsKey('Name')) {
+            if ($PSBoundParameters.ContainsKey('Name') -and -not [string]::IsNullOrWhiteSpace($Name)) {
                 if ($hostObj.name -notlike $Name) { $match = $false }
             }
 
@@ -57,7 +57,7 @@ function Get-SANtricityHost {
             }
 
             # Filter by Port
-            if ($match -and $PSBoundParameters.ContainsKey('Port')) {
+            if ($match -and $PSBoundParameters.ContainsKey('Port') -and -not [string]::IsNullOrWhiteSpace($Port)) {
                 $portFound = $false
                 
                 # Check standard ports list (iSCSI, FC)
