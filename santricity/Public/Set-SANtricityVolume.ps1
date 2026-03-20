@@ -33,12 +33,19 @@ Enable or disable background media scanning.
 .PARAMETER ParityValidationEnabled
 Enable or disable parity validation during media scans.
 
+.PARAMETER FlashCacheEnabled
+Enable or disable SSD Flash Cache for this volume. To enable, a valid SSD Flash Cache must already exist on the storage system.
+
 .PARAMETER ExtraProperties
 A hashtable of additional properties to merge into the request body.
 Useful for setting properties not yet explicitly supported by cmdlet parameters.
 
 .EXAMPLE
 Set-SANtricityVolume -VolumeName "OldName" -NewName "NewName" -WriteCacheEnabled $true
+
+.EXAMPLE
+Set-SANtricityVolume -VolumeName "Database-LUN-1" -FlashCacheEnabled $true
+
 
 .EXAMPLE
 Set-SANtricityVolume -VolumeId "123" -ExtraProperties @{ "metaTags" = @( @{ "key"="k"; "value"="v" } ) }
@@ -74,6 +81,9 @@ function Set-SANtricityVolume {
 
         [Parameter(Mandatory=$false)]
         [bool]$ParityValidationEnabled,
+
+        [Parameter(Mandatory=$false)]
+        [bool]$FlashCacheEnabled,
 
         [Parameter(Mandatory=$false)]
         [hashtable]$ExtraProperties
@@ -131,15 +141,44 @@ function Set-SANtricityVolume {
             }
         }
         
-        # If no properties to update, return
-        if ($body.Keys.Count -eq 0) {
-            Write-Warning "No properties specified to update."
-            return
+        $baseResult = $null
+        # If no properties to update, skip the base PUT/POST update
+        if ($body.Keys.Count -gt 0) {
+            Write-Verbose "Updated Volume $VolumeId with properties: $($body | ConvertTo-Json -Compress -Depth 10)"
+            $baseResult = Invoke-SANtricityRequest -Method 'POST' -Path "/volumes/$VolumeId" -Body $body
         }
 
-        Write-Verbose "Updated Volume $VolumeId with properties: $($body | ConvertTo-Json -Compress -Depth 10)"
-        
-        # 3. Call API
-        return Invoke-SANtricityRequest -Method 'POST' -Path "/volumes/$VolumeId" -Body $body
+        # 3. Handle Flash Cache Enable/Disable (Symbol API)
+        if ($PSBoundParameters.ContainsKey('FlashCacheEnabled')) {
+            $fcResponse = $null
+            if ($FlashCacheEnabled) {
+                # Enabling Flash Cache requires finding the existing Flash Cache ID
+                Write-Verbose "Enabling Flash Cache for Volume '$VolumeId'..."
+                $cache = Get-SANtricityFlashCache | Select-Object -First 1
+                if (-not $cache) {
+                    Write-Warning "Could not enable Flash Cache on Volume '$VolumeId'. No Flash Cache exists on the storage system."
+                } else {
+                    $fcPayload = @{
+                        volumeRef = $VolumeId
+                        flashCacheRef = $cache.id
+                    }
+                    $fcResponse = Invoke-SANtricityRequest -Method POST -Path '/symbol/enableFlashCacheVolume?verboseErrorResponse=true' -Body $fcPayload
+                    if ($fcResponse -ne 'ok') { Write-Warning "Failed to enable Flash Cache: $fcResponse" }
+                }
+            } else {
+                # Disabling Flash Cache (only needs volumeRef)
+                Write-Verbose "Disabling Flash Cache for Volume '$VolumeId'..."
+                $fcPayload = "`"$VolumeId`""
+                $fcResponse = Invoke-SANtricityRequest -Method POST -Path '/symbol/disableFlashCacheVolume?verboseErrorResponse=true' -Body $fcPayload
+                if ($fcResponse -ne 'ok') { Write-Warning "Failed to disable Flash Cache: $fcResponse" }
+            }
+        }
+
+        if (-not $baseResult) {
+            # In case only flash cache was updated, refresh the volume state to return
+            $baseResult = Invoke-SANtricityRequest -Method GET -Path "/volumes/$VolumeId"
+        }
+
+        return $baseResult
     }
 }
