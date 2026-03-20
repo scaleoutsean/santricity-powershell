@@ -66,6 +66,9 @@ function New-SANtricityHost {
                     $type = "iscsi"
                 } elseif ($p.StartsWith("nqn.", [System.StringComparison]::InvariantCultureIgnoreCase)) {
                     $type = "nvmeof" 
+                # Check for WWN format (16 hex chars, possibly colon-separated)
+                } elseif ($p -match "^([0-9a-fA-F]{2}:){7}[0-9a-fA-F]{2}$" -or $p -match "^[0-9a-fA-F]{16}$") {
+                    $type = "fc"
                 } else {
                     $type = "iscsi" # Default to iSCSI as per common preference
                 }

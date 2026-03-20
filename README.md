@@ -58,6 +58,8 @@ Get-SANtricityStoragePool -Name "Pool_A"
 
 # Create report for vCenter volumes
 Get-SANtricityMappingsReport -Volume "vcenter1_" | Format-Table
+# Create report for assembly of deterministic disk device paths
+Get-SANtricityMappingsReport | Select-Object -First 2 chassisSerialNumber, poolName, mappableObjectName, lunId, volumeId, volumeEui, volumeWwn, targetLabel, isCluster | Format-Table -AutoSize
 
 # Get commands
 Get-Command -Module santricity
