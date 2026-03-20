@@ -79,6 +79,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 |--------|--------|-------|
 | `New-SANtricityStoragePool` | **Beta** | Create new storage pool. Targets single shelf arrays. See online help. |
 | `Get-SANtricityStoragePool` | **Beta** | Get storage pools. |
+| `Set-SANtricityStoragePool` | **Beta** | Set mutable parameters on existing storage pool. |
 | `Remove-SANtricityStoragePool` | **Beta** | Checks for volumes and mappings before deletion (requires `-Force`). |
 
 ### Diagnostics

@@ -21,7 +21,7 @@ Import-Module ./santricity/santricity.psd1 -Force
 Import-Module ./PowerShellRich/PowerShellRich.psd1 -ErrorAction SilentlyContinue
 
 # For testing/lab (skips certificate validation):
-$conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -VerifySsl:$false -Verbose
+$conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -SkipCertificateCheck -Verbose
 
 # For production with controller or CA pinning (legacy pipeline implied when using -TrustedCertificate):
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-or-ca-chain.pem' -Verbose
@@ -55,6 +55,8 @@ Get-SANtricityVolumeMapping -Type cluster
 # Get storage pool(s) 
 Get-SANtricityStoragePool -RaidLevel "raidDiskPool"
 Get-SANtricityStoragePool -Name "Pool_A"
+# Set storage pool with one line
+Set-SANtricityStoragePool -Name pool1 -PriorityBackground lowest -PriorityDegraded high -PriorityCritical highest -ThresholdWarning 75 -ThresholdCritical 90
 
 # Create report for vCenter volumes
 Get-SANtricityMappingsReport -Volume "vcenter1_" | Format-Table

@@ -5,7 +5,8 @@ Create a new storage pool (Volume Group or DDP).
 .DESCRIPTION
 Creates a new storage pool. Supports creating pools with specific RAID levels or simply using all available drives (Auto).
 When using -Auto, it attempts to select the largest group of compatible (same media type) unbound drives.
-Do not confuse this with the logic and options available in SMcli. This cmdlet is streamlined and targets single shelf pools.
+Do not confuse this cmdlet with the logic and options available in SMcli. This cmdlet is streamlined and targets single shelf, DDP pools.
+Use the UI or own cmdlets to configure hot spares for traditional RAID pools, or make other adjustments if needed.
 
 .PARAMETER Name
 Name of the new storage pool.
