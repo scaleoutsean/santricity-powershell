@@ -30,6 +30,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Get-SANtricityMappingsReport` | **Stable** | Aggregates data from multiple endpoints. |
 | `Show-SANtricityMappingsReportFormatted` | **Stable** | Formats report using PowerShellRich if available. |
 | `Get-SANtricityTarget` | **Beta** | Returns Target Name (IQN/NQN), Portals, and mapped volume details. |
+| `Get-SANtricityFlashCache` | **Stable** | Shows SANtricity SSD Cache (if available) configuration. |
 
 ### Volume Management
 
@@ -87,7 +88,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | Cmdlet | Status | Notes |
 |--------|--------|-------|
 | `Get-SANtricityOdxStatus` | **Beta** | Confirms (`$True`) Windows ODX enabled status (factory default: Enabled) |
-| `Get-SANtricityFlashCacheStatistics` | **Beta** | Shows SANtricity SSD Cache (aka "Flash Read Cache") statistics. |
+| `Get-SANtricityFlashCacheStatistics` | **Beta** | Get SSD Cache (Flash Read Cache, "FRC") statistics when FRC available. |
 | `Start-SANtricityTranscript` | **Stable** | Starts session logging to a file. |
 | `Stop-SANtricityTranscript` | **Stable** | Stops session logging to a file. |
 
