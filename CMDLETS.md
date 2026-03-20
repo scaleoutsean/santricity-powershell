@@ -86,9 +86,10 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 
 | Cmdlet | Status | Notes |
 |--------|--------|-------|
-| `Get-SANtricityOdxStatus` | **Beta** | Confirms (`$True`) Windows ODX enabled status (factory default) |
-| `Start-SANtricityTranscript` | **Stable** | |
-| `Stop-SANtricityTranscript` | **Stable** | |
+| `Get-SANtricityOdxStatus` | **Beta** | Confirms (`$True`) Windows ODX enabled status (factory default: Enabled) |
+| `Get-SANtricityFlashCacheStatistics` | **Beta** | Shows SANtricity SSD Cache (aka "Flash Read Cache") statistics. |
+| `Start-SANtricityTranscript` | **Stable** | Starts session logging to a file. |
+| `Stop-SANtricityTranscript` | **Stable** | Stops session logging to a file. |
 
 ## Future / Planned
 
