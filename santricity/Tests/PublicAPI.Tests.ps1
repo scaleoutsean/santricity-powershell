@@ -46,8 +46,14 @@ Describe "Module Public API Surface" {
         # Snapshot & Clone Management (Single Volume)
         "Get-SANtricitySnapshotGroup",
         "New-SANtricitySnapshotGroup",
+        "Get-SANtricitySnapshotGroupRepositoryUtilization",
+        "Get-SANtricitySnapshotVolumeRepositoryUtilization",
+        "Get-SANtricityConcatRepository",
         "New-SANtricitySnapshot",
         "Get-SANtricitySnapshot",
+        "Get-SANtricitySnapshotVolume",
+        "Get-SANtricitySnapshotSchedule",
+        "Set-SANtricitySnapshotSchedule",
         "Remove-SANtricitySnapshot",
         "Get-SANtricityClone",
         "New-SANtricityClone",
@@ -57,7 +63,10 @@ Describe "Module Public API Surface" {
         # Consistency Group Management
         "Get-SANtricityConsistencyGroup",
         "New-SANtricityConsistencyGroup",
-        "New-SANtricityConsistencyGroupView",
+        "New-SANtricityConsistencyGroupClone",
+        "Get-SANtricityConsistencyGroupClone",
+        "Get-SANtricityConsistencyGroupCloneVolume",
+        "Get-SANtricityConsistencyGroupMemberVolume",
         "Remove-SANtricityConsistencyGroup",
 
         # Volume Copy Management
