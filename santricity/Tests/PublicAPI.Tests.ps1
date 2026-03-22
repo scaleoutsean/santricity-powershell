@@ -24,6 +24,9 @@ Describe "Module Public API Surface" {
         "Get-SANtricityMappingsReport",
         "Show-SANtricityMappingsReportFormatted",
         "Get-SANtricityTarget",
+        "Get-SANtricityIscsiTargetSetting",
+        "Get-SANtricityNvmeTargetSetting",
+        "Get-SANtricityInterface",
         "Get-SANtricityOdxStatus",
 
         # Volume Management

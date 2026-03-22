@@ -52,6 +52,14 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Remove-SANtricityHost` | **Beta** | Safe deletion: checks for mappings first. |
 | `Remove-SANtricityHostGroup` | **Beta** | Safe deletion: checks for member hosts and mappings first. |
 
+### Interface Management
+
+| Cmdlet | Status | Notes |
+|--------|--------|-------|
+|`Get-SANtricityInterface` | **Beta** | Gets interface objects. |
+|`Get-SANtricityIscsiTargetSetting` | **Beta** | Gets iSCSI target settings. |
+|`Get-SANtricityNvmeTargetSetting` | **Beta** | Gets NVMe-oF target settings. |
+
 ### Snapshot & Clone Management
 
 | Cmdlet | Status | Notes |
