@@ -1,11 +1,11 @@
-function New-SANtricityConsistencyGroupView {
+function New-SANtricityConsistencyGroupClone {
     <#
     .SYNOPSIS
     Creates a snapshot view (Linked Clone) for a Consistency Group.
 
     .DESCRIPTION
-    Creates access volumes for all members of a consistency group from a specific point-in-time snapshot.
-    The view can be Read-Only or Read-Write.
+    Creates access volumes (clones) for all members of a consistency group from a specific point-in-time snapshot.
+    The clone can be Read-Only or Read-Write.
 
     .PARAMETER ConsistencyGroupId
     The ID (Ref) of the source Consistency Group.
@@ -23,9 +23,10 @@ function New-SANtricityConsistencyGroupView {
     Percentage of base volume size to allocate for copy-on-write repository (Read-Write mode only).
 
     .EXAMPLE
-    New-SANtricityConsistencyGroupView -ConsistencyGroupId "2A00..." -Name "View1" -AccessMode ReadWrite
+    New-SANtricityConsistencyGroupClone -ConsistencyGroupId "2A00..." -Name "Clone1" -AccessMode ReadWrite
     #>
     [CmdletBinding()]
+    [Alias("New-SANtricityConsistencyGroupView")]
     param(
         [Parameter(Mandatory = $true)]
         [string]$ConsistencyGroupId,

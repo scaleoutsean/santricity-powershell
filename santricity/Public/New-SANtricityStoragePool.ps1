@@ -96,9 +96,9 @@ function New-SANtricityStoragePool {
         Write-Verbose "Filtering for optimal, unassigned, non-hotspare drives..."
         # Filter for candidates: optimal, not assigned to a pool, not hot spare
         $candidates = $allDrives | Where-Object { 
+            ($null -eq $_.currentVolumeGroupRef -or $_.currentVolumeGroupRef -match '^[0]+$') -and
             ($_.status -eq 'optimal') -and 
-            (-not $_.hotSpare) -and
-            ($_.currentVolumeGroupRef -eq $null -or $_.currentVolumeGroupRef -match '^[0]+$')
+            (-not $_.hotSpare)
         }
 
         if (-not $candidates) {

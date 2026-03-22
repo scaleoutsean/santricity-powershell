@@ -60,6 +60,7 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `New-SANtricitySnapshotGroup` | **Stable** | Creates snapshot groups. |
 | `New-SANtricitySnapshot` | **Stable** | Creates instant snapshot. Auto-creates group if `-Force` is used. Supports Consistency Groups. |
 | `Get-SANtricitySnapshot` | **Stable** | Lists snapshots. Supports `-Newest`/`-Oldest` sorting. |
+| `Get-SANtricitySnapshotVolume` | **Stable** | Lists linked clones. Supports `-Newest`/`-Oldest` sorting. |
 | `Remove-SANtricitySnapshot` | **Stable** | Deletes snapshots. Supports `-Oldest` deletion strategy. |
 | `Get-SANtricityClone` | **Stable** | Lists clones/views. |
 | `New-SANtricityClone` | **Stable** | Creates clone. Defaults to Read-Only (View). |
@@ -71,8 +72,10 @@ This document tracks the implementation status of cmdlets in the SANtricity Powe
 | `Remove-SANtricityVolumeCopy` | **Stable** | Deletes the volume copy pair relationship (Job). |
 | `Get-SANtricityConsistencyGroup` | **Beta** | Lists multi-volume consistency groups. |
 | `New-SANtricityConsistencyGroup` | **Beta** | Creates consistency groups with batch member addition. |
-| `New-SANtricityConsistencyGroupView` | **Beta** | Creates consistency group views (linked clones). |
+| `New-SANtricityConsistencyGroupClone` | **Beta** | Creates consistency group views (linked clones). Aliased to `View`. |
 | `Remove-SANtricityConsistencyGroup` | **Beta** | Deletes consistency groups and member snapshot groups. |
+| `Get-SANtricitySnapshotSchedule` | **Beta** | Lists snapshot schedules. Accepts pipeline input for easy Group-to-Schedule mapping. |
+| `Set-SANtricitySnapshotSchedule` | **Beta** | Sets snapshot schedule to Enable or Disable. Does not aim to create schedules.|
 
 ### Pool Management
 

@@ -56,17 +56,22 @@ function Remove-SANtricityVolume {
         if ($activeMappings) {
             $count = if ($activeMappings -is [array]) { $activeMappings.Count } else { 1 }
             if (-not $Force) {
-                $msg = "Volume '$VolumeId' has $count active mapping(s). Use -Force to delete anyway."
+                $msg = "Volume $($VolumeId) has $count active mapping(s). Use -Force to delete anyway."
                 $ex = [System.InvalidOperationException]::new($msg)
                 $CategoryInfo = [System.Management.Automation.ErrorCategory]::ResourceBusy
                 $ErrorRecord = [System.Management.Automation.ErrorRecord]::new($ex, "VolumeIsMapped", $CategoryInfo, $VolumeId)
                 $PSCmdlet.ThrowTerminatingError($ErrorRecord)
             } else {
-                Write-Warning "Deleting volume '$VolumeId' which has $count active mapping(s)."
+                Write-Warning "Deleting volume $($VolumeId) which has $count active mapping(s)."
             }
         }
 
-        if ($PSCmdlet.ShouldProcess("Volume $VolumeId", "Remove-SANtricityVolume")) {
+        $performDelete = $true
+        if (-not $Force) {
+            $performDelete = $PSCmdlet.ShouldContinue("Are you absolutely sure you want to delete volume $($VolumeId)? This action cannot be undone.", "Confirm Volume Deletion")
+        }
+
+        if ($performDelete -and $PSCmdlet.ShouldProcess("Volume $VolumeId", "Remove-SANtricityVolume")) {
              Invoke-SANtricityRequest -Method DELETE -Path "/volumes/$VolumeId"
         }
     }

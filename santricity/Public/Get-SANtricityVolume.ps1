@@ -12,6 +12,9 @@ function Get-SANtricityVolume {
     .PARAMETER IncludeSystem
     If specified, includes all volume types, including internal repository volumes.
 
+    .PARAMETER OrphansOnly
+    If specified, returns only orphaned/free repository volumes (internal volumes that are no longer associated with a snapshot group or consistency group). Implies -IncludeSystem.
+
     .PARAMETER Id
     Retrieve a specific volume by its unique identifier (Ref).
 
@@ -47,6 +50,10 @@ function Get-SANtricityVolume {
     param(
         [Parameter(Mandatory=$false)]
         [switch]$IncludeSystem,
+        
+        [Parameter(Mandatory=$false)]
+        [Alias("Orphans")]
+        [switch]$OrphansOnly,
         
         [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
         [Alias("Id")]
@@ -96,7 +103,9 @@ function Get-SANtricityVolume {
         if (-not $vols) { return $null }
 
         # Filter: System Volumes
-        if (-not $IncludeSystem) {
+        if ($OrphansOnly) {
+            $vols = $vols | Where-Object { $_.volumeUse -eq 'freeRepositoryVolume' }
+        } elseif (-not $IncludeSystem) {
             $vols = $vols | Where-Object { $_.volumeUse -in @('standardVolume', 'thinVolume') }
         }
 

@@ -27,6 +27,8 @@ $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin
 
 # Get volumes
 $vols = Get-SANtricityVolume
+# Get and remove "repo" volumes orphaned by Snapshot (Consistency) Group deletion. Verify before confirming!
+Get-SANtricityVolume -Orphans | Remove-SANtricityVolume
 # Use metadata values (from SANtricity CSI, or own)
 $vols[0].metadata['pvc_name'] # Metadata is parsed into a hashtable for easy access
 Get-SANtricityVolume -Verbose
