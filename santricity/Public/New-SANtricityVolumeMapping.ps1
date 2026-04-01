@@ -33,10 +33,12 @@ function New-SANtricityVolumeMapping {
         # Volume Identification
         [Parameter(Mandatory=$true, ParameterSetName="ById")]
         [Parameter(Mandatory=$true, ParameterSetName="TargetName")]
+        [Parameter(Mandatory=$true, ParameterSetName="TargetGroupName")]
         [string]$VolumeId,
 
         [Parameter(Mandatory=$true, ParameterSetName="ByName")]
         [Parameter(Mandatory=$true, ParameterSetName="ByNameAndTargetName")]
+        [Parameter(Mandatory=$true, ParameterSetName="ByNameAndTargetGroupName")]
         [string]$VolumeName,
 
         # Target Identification
