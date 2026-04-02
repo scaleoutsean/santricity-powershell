@@ -54,6 +54,9 @@ function Get-SANtricityVolume {
         [Parameter(Mandatory=$false)]
         [Alias("Orphans")]
         [switch]$OrphansOnly,
+
+        [Parameter(Mandatory=$false)]
+        [switch]$IncludeClones,
         
         [Parameter(ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
         [Alias("Id")]
@@ -86,10 +89,22 @@ function Get-SANtricityVolume {
             # Direct fetch by ID (VolumeRef)
             # This is more efficient and avoids filtering later
             try {
-                return Invoke-SANtricityRequest -Method 'GET' -Path "/volumes/$VolumeRef"
+                $vol = Invoke-SANtricityRequest -Method 'GET' -Path "/volumes/$VolumeRef"
+                $vol | Add-Member -MemberType NoteProperty -Name 'IsClone' -Value $false -Force
+                return $vol
             } catch {
-                # If 404, usually PowerShell style: Write-Error if specific ID requested and not found.
                 if ($_.Exception.Message -match "404") {
+                    if ($IncludeClones) {
+                        # Retry over clones
+                        $allClones = @(Get-SANtricityClone) + @(Get-SANtricityConsistencyGroupClone)
+                        $clone = $allClones | Where-Object { $_.viewRef -eq $VolumeRef -or $_.volumeRef -eq $VolumeRef } | Select-Object -First 1
+                        if ($clone) {
+                            $clone | Add-Member -MemberType NoteProperty -Name 'IsClone' -Value $true -Force
+                            if ($null -eq $clone.volumeRef -and $clone.viewRef) { $clone | Add-Member -MemberType NoteProperty -Name 'volumeRef' -Value $clone.viewRef -Force }
+                            if ($null -eq $clone.capacity -and $clone.totalSizeInBytes) { $clone | Add-Member -MemberType NoteProperty -Name 'capacity' -Value $clone.totalSizeInBytes -Force }
+                            return $clone
+                        }
+                    }
                     Write-Error "Volume with ID '$VolumeRef' not found."
                     return $null
                 }
@@ -98,15 +113,33 @@ function Get-SANtricityVolume {
         }
 
         # Fetch all volumes first
-        $vols = Invoke-SANtricityRequest -Method 'GET' -Path '/volumes'
-        
+        $vols = @(Invoke-SANtricityRequest -Method 'GET' -Path '/volumes')
+        $vols | ForEach-Object { $_ | Add-Member -MemberType NoteProperty -Name 'IsClone' -Value $false -Force }
+
+        if ($IncludeClones) {
+            $clones = @(Get-SANtricityClone)
+            $cgClones = @(Get-SANtricityConsistencyGroupClone)
+            # Both $clones and $cgClones might return things that are basically volumes 
+            # with 'viewRef' instead of 'volumeRef' or 'capacity' returning 'totalSizeInBytes'
+            # We don't try to normalize them too much to preserve original object fields,
+            # but we set IsClone=$true
+            $allClones = @($clones) + @($cgClones)
+            $allClones | ForEach-Object {
+                $_ | Add-Member -MemberType NoteProperty -Name 'IsClone' -Value $true -Force
+                # To help filtering down below we map ID and capacity properties
+                if ($null -eq $_.volumeRef -and $_.viewRef) { $_ | Add-Member -MemberType NoteProperty -Name 'volumeRef' -Value $_.viewRef -Force }
+                if ($null -eq $_.capacity -and $_.totalSizeInBytes) { $_ | Add-Member -MemberType NoteProperty -Name 'capacity' -Value $_.totalSizeInBytes -Force }
+            }
+            $vols += $allClones
+        }
+
         if (-not $vols) { return $null }
 
         # Filter: System Volumes
         if ($OrphansOnly) {
             $vols = $vols | Where-Object { $_.volumeUse -eq 'freeRepositoryVolume' }
         } elseif (-not $IncludeSystem) {
-            $vols = $vols | Where-Object { $_.volumeUse -in @('standardVolume', 'thinVolume') }
+            $vols = $vols | Where-Object { $_.volumeUse -in @('standardVolume', 'thinVolume') -or $_.IsClone }
         }
 
         # Filter: HostRef (requires fetching mappings)

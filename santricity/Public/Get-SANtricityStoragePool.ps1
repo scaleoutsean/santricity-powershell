@@ -9,7 +9,7 @@ function Get-SANtricityStoragePool {
     Supports filtering by Name (Label), PoolId (Ref), and RaidLevel.
 
     .PARAMETER Name
-    Filter by Pool Label or Name (regex match).
+    Filter by Pool Label or Name (supports wildcards).
 
     .PARAMETER PoolId
     Filter by Volume Group Ref (IDs).
@@ -37,11 +37,11 @@ function Get-SANtricityStoragePool {
         foreach ($p in $pools) {
             $match = $true
 
-            # Filter by Name/Label (Regex)
+            # Filter by Name/Label (Wildcards)
             if ($PSBoundParameters.ContainsKey('Name') -and -not [string]::IsNullOrWhiteSpace($Name)) {
                 # API usually provides 'label' or 'name' (often both, identical)
                 $label = if ($p.label) { $p.label } else { $p.name }
-                if (-not ($label -and $label -match $Name)) { $match = $false }
+                if (-not ($label -and $label -like $Name)) { $match = $false }
             }
 
             # Filter by PoolId (Ref)
