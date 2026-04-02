@@ -198,7 +198,7 @@ function Get-SANtricityVolume {
             $match = $true
 
             # Parse Metadata: Convert list of KV objects to Hashtable
-            if ($v.metadata -is [Array]) {
+            if ($null -ne $v.psobject.Properties['metadata'] -and $v.metadata -is [Array]) {
                 $mdHash = @{}
                 foreach ($item in $v.metadata) {
                     if ($item.key) {
@@ -208,8 +208,8 @@ function Get-SANtricityVolume {
                 # Preserve original metadata as 'MetadataList'
                 $v | Add-Member -MemberType NoteProperty -Name 'MetadataList' -Value $v.metadata -Force
                 $v.metadata = $mdHash
-            } elseif ($null -eq $v.metadata) {
-                $v.metadata = @{}
+            } else {
+                $v | Add-Member -MemberType NoteProperty -Name 'metadata' -Value @{} -Force
             }
             
             # Name Filter
