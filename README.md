@@ -7,7 +7,9 @@ REST API and produce a mappings report similar to the Python client (`santricity
 
 It has been tested with PowerShell 7.5 and 7.6. It is aimed at Day 1+ operations on DDP (pools) to avoid the complexity of RAID groups.
 
-## Usage:
+If you're looking for SANmox, see under `./sanmox`.
+
+## Usage
 
 ```powershell
 git clone https://github.com/scaleoutsean/santricity-powershell

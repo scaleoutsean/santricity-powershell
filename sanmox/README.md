@@ -25,8 +25,15 @@ SANmox is **not** meant to be installed on PVE nodes. It is meant to be installe
   - `PveApiUri`: PVE API IP/FQDN
   - `PveUser`: PVE user + API key name. Example: if the PVE user is `root@pam` and API Token name `wtf`, that means `root@pam!wtf` should be provided here. This is same as API token name when you issue it in PVE datacenter API Token issuing workflow. **Important:** uncheck Privilege Separation when creating the token, or your token will have limited privilege - for example, it will be unable to create datastores. You don't need to use `root@pam` account, but your token must have sufficient privileges. Check the PVE documentation for more.
 - Run `./sanmox.ps1`
+  - Optional: pass a specific config file with `-Config /full/path/to/sanconfig.cluster-a.json`
+  - If `-Config` is not provided, SANmox keeps the existing default behavior and loads `./sanconfig.json` from the same directory as `sanmox.ps1`
 
-Your (encrypted) credentials will be securely prompted for on first launch and optionally stored in `~/.sanmox_cred.xml` and `~/.sanmox_pve_cred.xml`. Do not leave your passwords inside `sanconfig.json`.
+Your (encrypted) credentials will be securely prompted for on first launch and optionally stored in:
+
+- Linux/macOS: `~/.sanmox_cred.xml` and `~/.sanmox_pve_cred.xml`
+- Windows: `$HOME/.sanmox_cred.xml` and `$HOME/.sanmox_pve_cred.xml` (typically `C:\Users\<username>\`)
+
+Do not leave your passwords inside `sanconfig.json`.
 
 ```powershell
 PowerShell 7.6.0
@@ -36,6 +43,9 @@ Do you want to save this password securely for future sessions? (Y/n):
 
 Please enter password/secret for PVE user 'root@pam' (input hidden): ********
 Do you want to save this PVE password securely for future sessions? (Y/n): 
+
+# Alternate profile/config example
+PS /home/sean/code/santricity-powershell> ./sanmox/sanmox.ps1 -Config /home/sean/configs/sanconfig.cluster-b.json
 ```
 
 ## SANmox features

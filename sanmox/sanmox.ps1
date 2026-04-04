@@ -7,11 +7,25 @@
 # License: MIT
 # Copyright (c) 2026
 
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$Config
+)
+
 # --- Configuration Loading ---
 $scriptDir = if ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path } else { Get-Location }
-$configFile = Join-Path -Path $scriptDir -ChildPath "sanconfig.json"
+$defaultConfigFile = Join-Path -Path $scriptDir -ChildPath "sanconfig.json"
+$configFile = if ([string]::IsNullOrWhiteSpace($Config)) {
+    $defaultConfigFile
+} else {
+    [System.IO.Path]::GetFullPath($Config)
+}
 $credFile = Join-Path -Path $HOME -ChildPath ".sanmox_cred.xml"
 $pveCredFile = Join-Path -Path $HOME -ChildPath ".sanmox_pve_cred.xml"
+
+if (-not [string]::IsNullOrWhiteSpace($Config)) {
+    Write-Host "Using config file: $configFile" -ForegroundColor Cyan
+}
 
 if (Test-Path -Path $configFile) {
     $Global:sanConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
@@ -103,10 +117,12 @@ if (-not $Global:pvePass -and -not [string]::IsNullOrWhiteSpace($Global:sanConfi
 # --- Connect ---
 Connect-SanmoxEnvironment
 
-Write-SpectreRule -Title "Sanmox: Console for Proxmox PVE with NetApp SANtricity | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Red
+$configProfileName = [System.IO.Path]::GetFileName($configFile)
+$configProfileNameSafe = if ($configProfileName) { $configProfileName.Replace('[', '[[').Replace(']', ']]') } else { "sanconfig.json" }
+Write-SpectreRule -Title "Sanmox: Console for Proxmox PVE with NetApp SANtricity | Profile: $configProfileNameSafe | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Red
 $poolNameSafe = $Global:sanConfig.SanPoolName.ToString().Replace('[', '[[').Replace(']', ']]')
 $hostGroupNameSafe = if ($Global:sanConfig.SanHostGroupName) { ($Global:sanConfig.SanHostGroupName -join ', ').Replace('[', '[[').Replace(']', ']]') } else { "None" }
-Write-SpectreHost -Message "Welcome to [blue underline]Sanmox[/]. Pinning to Storage Pool: [green]$poolNameSafe[/] | Host Group(s): [green]$hostGroupNameSafe[/]`n"
+Write-SpectreHost -Message "Welcome to [blue underline]Sanmox[/]. Profile: [green]$configProfileNameSafe[/] | Pinning to Storage Pool: [green]$poolNameSafe[/] | Host Group(s): [green]$hostGroupNameSafe[/]`n"
 
 # --- Main Menu Loop ---
 do {
