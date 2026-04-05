@@ -236,6 +236,213 @@ function Get-SanmoxSystemPerformanceSnapshot {
     }
 }
 
+function Get-SanmoxStoragePerformanceAdvisor {
+    [CmdletBinding()]
+    param()
+
+    # Longer windows reduce the risk of recommendations based on short bursts.
+    $sampleChoices = @('300', '600', '3600')
+    $selectedPeriod = Read-SpectreSelection -Title "Select sampling period in seconds (longer is usually better)" -Choices $sampleChoices -Color Turquoise2
+
+    $requestedWaitSeconds = 600
+    if (-not [int]::TryParse([string]$selectedPeriod, [ref]$requestedWaitSeconds)) {
+        $requestedWaitSeconds = 600
+    }
+
+    $liveProps = @(
+        'totalIopsServiced', 'totalBytesServiced',
+        'cacheHitsIopsTotal', 'cacheHitsBytesTotal',
+        'randomIosTotal', 'randomBytesTotal',
+        'readIopsTotal', 'readBytesTotal',
+        'writeIopsTotal', 'writeBytesTotal'
+    )
+
+    $extractSystemStats = {
+        param($Payload)
+        if ($null -eq $Payload) { return @() }
+        if ($Payload.PSObject.Properties['systemStats']) {
+            $ss = $Payload.systemStats
+            if ($null -eq $ss) { return @() }
+            if ($ss -is [System.Array]) { return @($ss) }
+            return @($ss)
+        }
+        if ($Payload -is [System.Array]) { return @($Payload) }
+        return @($Payload)
+    }
+
+    Write-SpectreHost -Message "[cyan]Collecting SANtricity baseline for Storage Performance Advisor...[/]"
+
+    try {
+        $baselinePayload = Get-SANtricityLiveStatistics
+        $baselineStats = @(& $extractSystemStats $baselinePayload)
+        if ($baselineStats.Count -eq 0) {
+            Write-SpectreHost -Message "[yellow]No system live statistics were returned from SANtricity.[/]"
+            return
+        }
+
+        Write-SpectreHost -Message "[cyan]Waiting $requestedWaitSeconds seconds (CLI wait). SANtricity observed interval may differ.[/]"
+        Start-Sleep -Seconds $requestedWaitSeconds
+
+        $finalPayload = Get-SANtricityLiveStatistics
+        $finalStats = @(& $extractSystemStats $finalPayload)
+        if ($finalStats.Count -eq 0) {
+            Write-SpectreHost -Message "[yellow]Final system live statistics sample was empty.[/]"
+            return
+        }
+
+        $tableData = for ($i = 0; $i -lt $finalStats.Count; $i++) {
+            if ($i -ge $baselineStats.Count) { continue }
+
+            $item = $finalStats[$i]
+            $previous = $baselineStats[$i]
+
+            $intervalSeconds = $requestedWaitSeconds
+            if ($item.PSObject.Properties['observedTimeInMS'] -and $previous.PSObject.Properties['observedTimeInMS']) {
+                $curMs = 0L; $prevMs = 0L
+                if ([long]::TryParse([string]$item.observedTimeInMS, [ref]$curMs) -and
+                    [long]::TryParse([string]$previous.observedTimeInMS, [ref]$prevMs)) {
+                    $intervalSeconds = [math]::Max(1, [math]::Round(($curMs - $prevMs) / 1000, 0))
+                }
+            }
+
+            $d = @{}
+            foreach ($prop in $liveProps) {
+                $cur = 0L; $prev = 0L
+                if ($item.PSObject.Properties[$prop] -and $previous.PSObject.Properties[$prop] -and
+                    [long]::TryParse([string]$item.$prop, [ref]$cur) -and
+                    [long]::TryParse([string]$previous.$prop, [ref]$prev)) {
+                    $d[$prop] = $cur - $prev
+                } else {
+                    $d[$prop] = 0L
+                }
+            }
+
+            $totalIops = $d['totalIopsServiced']
+            $readIopsPerSec = [int]($d['readIopsTotal'] / $intervalSeconds)
+            $writeIopsPerSec = [int]($d['writeIopsTotal'] / $intervalSeconds)
+            $totalIopsPerSec = [int]($totalIops / $intervalSeconds)
+            $readMibPerSec = [math]::Round($d['readBytesTotal'] / $intervalSeconds / 1MB, 2)
+            $writeMibPerSec = [math]::Round($d['writeBytesTotal'] / $intervalSeconds / 1MB, 2)
+            $totalMibPerSec = [math]::Round($d['totalBytesServiced'] / $intervalSeconds / 1MB, 2)
+            $cacheHitPct = if ($totalIops -gt 0) { [math]::Round($d['cacheHitsIopsTotal'] * 100.0 / $totalIops, 1) } else { $null }
+            $randomPct = if ($totalIops -gt 0) { [math]::Round($d['randomIosTotal'] * 100.0 / $totalIops, 1) } else { $null }
+
+            # Average request size is a useful signal for cache/read-ahead suitability.
+            $avgReadReqKiB = if ($d['readIopsTotal'] -gt 0) {
+                [math]::Round(($d['readBytesTotal'] / [double]$d['readIopsTotal']) / 1KB, 1)
+            } else { $null }
+            $avgWriteReqKiB = if ($d['writeIopsTotal'] -gt 0) {
+                [math]::Round(($d['writeBytesTotal'] / [double]$d['writeIopsTotal']) / 1KB, 1)
+            } else { $null }
+
+            $rwIopsPerSec = $readIopsPerSec + $writeIopsPerSec
+            $readBiasPct = if ($rwIopsPerSec -gt 0) { [math]::Round(($readIopsPerSec * 100.0) / $rwIopsPerSec, 1) } else { 0.0 }
+            $writeBiasPct = if ($rwIopsPerSec -gt 0) { [math]::Round(($writeIopsPerSec * 100.0) / $rwIopsPerSec, 1) } else { 0.0 }
+            $rwCoveragePct = if ($totalIopsPerSec -gt 0) { [math]::Round(($rwIopsPerSec * 100.0) / $totalIopsPerSec, 1) } else { $null }
+
+            $cacheModeHint = 'Write-through or write-around'
+            if ($writeBiasPct -ge 60 -and $randomPct -ge 40) {
+                $cacheModeHint = 'Write-back candidate (with power-safe cache tier)'
+            } elseif ($readBiasPct -ge 65 -and $cacheHitPct -lt 25) {
+                $cacheModeHint = 'Read cache candidate; write-around default'
+            }
+
+            if ($null -ne $avgReadReqKiB -and $avgReadReqKiB -lt 128 -and $randomPct -lt 20) {
+                $cacheModeHint = 'Small read requests + low random: avoid aggressive read-ahead'
+            }
+
+            $placementHint = 'Balanced tier placement'
+            if ($totalIopsPerSec -ge 3000 -or $totalMibPerSec -ge 50) {
+                $placementHint = 'Performance tier preferred (SSD / faster RAID profile)'
+            } elseif ($totalIopsPerSec -lt 400 -and $totalMibPerSec -lt 10) {
+                $placementHint = 'Capacity tier acceptable (NL-SAS / denser RAID profile)'
+            }
+
+            if ($randomPct -lt 15 -and $totalMibPerSec -lt 40) {
+                $placementHint = 'Low-random profile: NL-SAS tier often acceptable'
+            }
+
+            $workloadHint = 'Mixed'
+            if ($writeBiasPct -ge 70 -and $randomPct -ge 50) {
+                $workloadHint = 'Random-write heavy'
+            } elseif ($readBiasPct -ge 70 -and $randomPct -ge 50) {
+                $workloadHint = 'Random-read heavy'
+            } elseif ($randomPct -lt 30) {
+                $workloadHint = 'Mostly sequential'
+            }
+
+            $consistencyHint = 'Consistent'
+            if ($null -ne $randomPct -and $null -ne $cacheHitPct) {
+                if ($randomPct -lt 15 -and $cacheHitPct -lt 10 -and $readBiasPct -ge 40) {
+                    $consistencyHint = 'Mixed/unclear: low random + low cache hit; check VM outliers'
+                } elseif ($null -ne $avgReadReqKiB -and $avgReadReqKiB -lt 16 -and $randomPct -lt 20) {
+                    $consistencyHint = 'Small-block + low random mismatch; validate per-VM'
+                }
+            }
+            if ($null -ne $rwCoveragePct -and $rwCoveragePct -lt 85) {
+                $consistencyHint = 'Mixed/unclear: Read/Write totals do not fully explain total IOPS'
+            }
+
+            [PSCustomObject]@{
+                'Observed Interval(s)' = $intervalSeconds
+                'IOPS/s'               = $totalIopsPerSec
+                'MiB/s'                = $totalMibPerSec
+                'Read%'                = "$readBiasPct%"
+                'Write%'               = "$writeBiasPct%"
+                'R/W Cov%'             = if ($null -ne $rwCoveragePct) { "$rwCoveragePct%" } else { 'N/A' }
+                'Avg Rd KiB'           = if ($null -ne $avgReadReqKiB) { "$avgReadReqKiB" } else { 'N/A' }
+                'Avg Wr KiB'           = if ($null -ne $avgWriteReqKiB) { "$avgWriteReqKiB" } else { 'N/A' }
+                'Cache Hit%'           = if ($null -ne $cacheHitPct) { "$cacheHitPct%" } else { 'N/A' }
+                'Random%'              = if ($null -ne $randomPct) { "$randomPct%" } else { 'N/A' }
+                'Consistency'          = $consistencyHint
+                'Workload'             = $workloadHint
+                'Cache Mode Hint'      = $cacheModeHint
+                'Placement Hint'       = $placementHint
+                '_item'                = $item
+            }
+        }
+
+        if ($tableData.Count -eq 0) {
+            Write-SpectreHost -Message "[yellow]Unable to calculate advisor metrics from SANtricity samples.[/]"
+            return
+        }
+
+        $lastItem = $tableData[0].'_item'
+        $observedInterval = [string]$tableData[0].'Observed Interval(s)'
+        $infoRows = @(
+            [PSCustomObject]@{ Property = 'Observed time';        Value = if ($lastItem.PSObject.Properties['observedTime']) { [string]$lastItem.observedTime } else { '(not reported)' } }
+            [PSCustomObject]@{ Property = 'Array WWN';            Value = if ($lastItem.PSObject.Properties['arrayWwn'])     { [string]$lastItem.arrayWwn }     else { '(not reported)' } }
+            [PSCustomObject]@{ Property = 'CLI wait request (s)'; Value = [string]$requestedWaitSeconds }
+            [PSCustomObject]@{ Property = 'Observed interval (s)';Value = if ([string]::IsNullOrWhiteSpace($observedInterval)) { '(not reported)' } else { $observedInterval } }
+        )
+
+        $advisorData = $tableData | Select-Object * -ExcludeProperty '_item'
+
+        Write-SpectreHost -Message ""
+        Write-SpectreRule -Title "Storage Performance Advisor (SANtricity aggregate)" -Alignment Center -Color Blue
+        try {
+            Format-SpectreTable -Data $infoRows -Color Grey
+        } catch {
+            $infoRows | Format-Table -HideTableHeaders | Out-String | Write-Host
+        }
+        try {
+            Format-SpectreTable -Data $advisorData
+        } catch {
+            $advisorData | Format-Table -AutoSize | Out-String | Write-Host
+        }
+
+        Write-SpectreHost -Message "[grey]Advisor notes: this is guidance from aggregate counters, not a strict policy engine. Validate against VM-level latency and business SLOs.[/]"
+        Write-SpectreHost -Message "[grey]Metrics are array-level (aggregate), not scoped to a specific volume, host group, or PVE pool; in shared arrays this can include load from other clusters, hypervisors, or bare-metal hosts.[/]"
+        Write-SpectreHost -Message "[grey]If Consistency indicates mixed/unclear patterns, inspect VM/CT-level outliers before changing tiering or cache mode.[/]"
+        Write-SpectreHost -Message ""
+        Write-SpectreHost -Message "[grey]Press Enter to return to the main menu...[/]"
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    } catch {
+        $err = $_.ToString().Replace('[', '(').Replace(']', ')')
+        Write-SpectreHost -Message "[red]Failed to run Storage Performance Advisor: $err[/]"
+    }
+}
+
 function Get-SanmoxPveDevicePaths {
     [CmdletBinding()]
     param()

@@ -195,7 +195,7 @@ do {
         "3. SANtricity Host Groups :shield:",
         "4. SANtricity Storage Pools (DDP) :up_down_arrow:",
         "5. Volume Utilization & Target Settings :eyes:",
-        "6. Get system performance snapshot :bar_chart:",
+        "6. Performance tools :bar_chart:",
         "7. First-time setup / Config :gear:",
         "Q. Quit :stop_sign:"
     )
@@ -261,7 +261,25 @@ do {
         '3' { Get-SanmoxHostGroup }
         '4' { Get-SanmoxStoragePoolOverview }
         '5' { Get-SanmoxTargetOverview }
-        '6' { Get-SanmoxSystemPerformanceSnapshot }
+        '6' {
+            # --- Performance Submenu ---
+            $sub = ''
+            do {
+                Write-SpectreRule -Title "Performance Tools :bar_chart: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Yellow
+                $perfChoices = @(
+                    "1. [Blue]Get[/] system performance snapshot (quick) :chart_increasing:",
+                    "2. [Blue]Storage[/] Performance Advisor (longer sample) :compass:",
+                    "B. Back to [Blue]main menu[/] :house:"
+                )
+                $sub = Read-SpectreSelection -Title "Pick a [Blue]performance tool[/]" -Choices $perfChoices -Color Turquoise2 -PageSize 10 -EnableSearch
+
+                switch ($sub.Substring(0, 1).ToUpper()) {
+                    '1' { Get-SanmoxSystemPerformanceSnapshot }
+                    '2' { Get-SanmoxStoragePerformanceAdvisor }
+                    'B' { break }
+                }
+            } until ($sub.Substring(0,1).ToUpper() -eq 'B')
+        }
         '7' { Write-SpectreHost -Message "TODO: Settings / Configuration Module" }
         'Q' { Write-SpectreHost -Message "Exiting Sanmox. Have a great day!" }
     }
