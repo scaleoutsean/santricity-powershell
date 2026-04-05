@@ -110,6 +110,6 @@ There are some other menu items made to make it possible to avoid using Web brow
 In terms of non-trivial changes, these seem appealing to me:
 
 - Any SANtricity PowerShell cmdlet you see in this repo can be added
-- When PVE adds NVMeoF support (`pve nvmeofscan`?), implement end-to-end provisioning for iSCSI and NVMe/RoCE
+- When PVE adds NVMeoF support (`pvesm nvmeofscan`?), implement end-to-end provisioning for iSCSI and NVMe/RoCE
 - Possible integration with SANtricity LVM plug-in for tighter integration with Proxmox datacenters/clusters (see the blog post at the top)
 
