@@ -15,7 +15,7 @@ This TUI has the following advantages:
 
 SANmox is **not** meant to be installed on PVE nodes. It is meant to be installed on a management workstation that can reach PVE hosts and SANtricity management IP.
 
-- Assuming your workstation is Debian Trixie, you should be able to use [PowerShell 7.6 LTS](https://github.com/PowerShell/PowerShell/releases/download/v7.6.0/powershell-lts_7.6.0-1.deb_amd64.deb). If you're on other OS, get a recent PowerShell 7.6 or 7.5
+- Assuming your workstation is running Debian Trixie, you should be able to use [PowerShell 7.6 LTS](https://github.com/PowerShell/PowerShell/releases/download/v7.6.0/powershell-lts_7.6.0-1.deb_amd64.deb). If you're on other OS, get a recent PowerShell 7.6 or 7.5
 - Install PowerShell module [Spectre Console](https://pwshspectreconsole.com/guides/get-started/): `Install-Module PwshSpectreConsole -Scope CurrentUser`
 - Clone this entire repo, change directory to `./sanmox`. Copy `sanconfig.json.example` to `sanconfig.json`:
   - `SanApiUri`: SANtricity API endpoint
@@ -60,7 +60,9 @@ Create a SANtricity volume (example: `sanmox`) in **SANtricity Volumes**:
 
 ![Create volume in SANtricity Volume menu (example: `sanmox`)](./images/step_02_create_santricity_volume.png)
 
-iSCSI may be able to discover the new target if previous volumes exists (i.e. target portal is known). PVE 9.1 can't scan NVMe/RoCE. Either way, rescan from storage using `iscsiadm` or `nvme` (client) and add a VG on the new volume. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding local LVM.
+iSCSI may be able to discover the new target if previous volumes exists (i.e. target portal is known) with `pvesm scan iscsi <HOST[:PORT]>`. But PVE 9.1 can't scan NVMe/RoCE, so this step is left to PVE CLI rather than partially implemented.
+
+Either way, rescan storage from CLI  using `iscsiadm` or `nvme` (client) and add a VG on the new volume. Use `lsblk` to show devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding local LVM.
 
 ![Create VG (`vg_sanmox`)](./images/step_03_create_vg.png)
 
@@ -100,5 +102,6 @@ There are some other menu items made to make it possible to avoid using Web brow
 In terms of non-trivial changes, these seem appealing to me:
 
 - Any SANtricity PowerShell cmdlet you see in this repo can be added
+- When PVE adds NVMeoF support (`pve nvmeofscan`?), implement end-to-end provisioning for iSCSI and NVMe/RoCE
 - Possible integration with SANtricity LVM plug-in for tighter integration with Proxmox datacenters/clusters (see the blog post at the top)
 

@@ -349,13 +349,14 @@ function Get-SanmoxPveDevicePaths {
         }
 
         $resolvedProtocols = @($targetProtocolByName.Values | Select-Object -Unique)
-        $nonNvmeProtocols = @($resolvedProtocols | Where-Object { $_ -ne 'nvme' })
+        $nonNvmeProtocols = @($resolvedProtocols | Where-Object { -not ([string]$_ -match 'nvme') })
         if ($nonNvmeProtocols.Count -gt 0) {
             $protocolList = $nonNvmeProtocols -join ', '
-            Write-SpectreHost -Message "[yellow]Detected configured Host Group/Host transport: $protocolList. NVMe /dev/disk/by-id/ paths are shown only for NVMe-capable entries; non-NVMe rows will show transport-specific identifiers and target hints instead.[/]"
+            Write-SpectreHost -Message "[yellow]Detected configured Host Group/Host transport: $protocolList. Rows now show transport-specific identifiers (iSCSI by-path, FC target hints, or NVMe by-id as applicable).[/]"
         }
 
         $iscsiTargetName = ''
+        $iscsiPortalValues = @()
         $iscsiPortals = ''
         try {
             if (@($targetProtocolByName.Values | Where-Object { $_ -match 'iscsi' }).Count -gt 0) {
@@ -379,6 +380,7 @@ function Get-SanmoxPveDevicePaths {
                     }
                 }
 
+                $iscsiPortalValues = @($portalValues)
                 $iscsiPortals = & $joinDisplayValues $portalValues
             }
         } catch {
@@ -408,6 +410,18 @@ function Get-SanmoxPveDevicePaths {
         } catch {
             Write-Verbose "Could not retrieve FC target port hints."
         }
+
+        $nvmeTargetName = ''
+        try {
+            if (@($targetProtocolByName.Values | Where-Object { $_ -match 'nvme' }).Count -gt 0) {
+                $nvmeSettings = Get-SANtricityNvmeTargetSetting -ErrorAction Stop
+                if ($nvmeSettings.nodeName -and -not [string]::IsNullOrWhiteSpace([string]$nvmeSettings.nodeName.nvmeNodeName)) {
+                    $nvmeTargetName = [string]$nvmeSettings.nodeName.nvmeNodeName
+                }
+            }
+        } catch {
+            Write-Verbose "Could not retrieve NVMe target settings for identifier hints."
+        }
         
         $results = foreach ($m in $mappings) {
             $targetName = ''
@@ -423,6 +437,10 @@ function Get-SanmoxPveDevicePaths {
                 'unknown'
             }
 
+            $isNvmeTransport = [string]$transport -match 'nvme'
+            $isIscsiTransport = [string]$transport -match 'iscsi'
+            $isFcTransport = [string]$transport -match 'fc|fibre'
+
             $euiPath = ''
             $euiValue = ''
             if ($m.PSObject.Properties['volumeEui'] -and -not [string]::IsNullOrWhiteSpace([string]$m.volumeEui)) {
@@ -432,13 +450,13 @@ function Get-SanmoxPveDevicePaths {
                 $euiValue = [string]$m.volumeWwn
             }
 
-            if ($transport -eq 'nvme' -and -not [string]::IsNullOrWhiteSpace($euiValue)) {
+            if ($isNvmeTransport -and -not [string]::IsNullOrWhiteSpace($euiValue)) {
                 $normalizedEui = ($euiValue -replace '^0x', '').Trim().ToLowerInvariant()
                 $euiPath = "/dev/disk/by-id/nvme-eui.$normalizedEui"
             }
             
             $altPath = ''
-            if ($transport -eq 'nvme' -and $null -ne $m.chassisSerialNumber -and $null -ne $m.lunId) {
+            if ($isNvmeTransport -and $null -ne $m.chassisSerialNumber -and $null -ne $m.lunId) {
                 $altPath = "/dev/disk/by-id/nvme-NetApp_E-Series_" + $m.chassisSerialNumber + "_" + $m.lunId
             }
 
@@ -448,37 +466,99 @@ function Get-SanmoxPveDevicePaths {
             }
 
             $targetHintParts = @()
-            if ($transport -match 'iscsi') {
+            if ($isIscsiTransport) {
                 if ($iscsiTargetName) {
                     $targetHintParts += "IQN $iscsiTargetName"
                 }
                 if ($iscsiPortals) {
                     $targetHintParts += "Portals $iscsiPortals"
                 }
-            } elseif ($transport -match 'fc|fibre') {
+            } elseif ($isFcTransport) {
                 if ($fcTargetPorts) {
                     $targetHintParts += "Target Port(s) $fcTargetPorts"
+                }
+            } elseif ($isNvmeTransport) {
+                if ($nvmeTargetName) {
+                    $targetHintParts += "NQN $nvmeTargetName"
                 }
             }
 
             $targetHint = & $joinDisplayValues $targetHintParts ' | '
+
+            $iscsiByPath = ''
+            if ($isIscsiTransport -and $iscsiTargetName -and $iscsiPortalValues.Count -gt 0) {
+                $lunValue = ''
+                if ($m.PSObject.Properties['lunId'] -and -not [string]::IsNullOrWhiteSpace([string]$m.lunId)) {
+                    $lunValue = [string]$m.lunId
+                } elseif ($m.PSObject.Properties['lun'] -and -not [string]::IsNullOrWhiteSpace([string]$m.lun)) {
+                    $lunValue = [string]$m.lun
+                } elseif ($m.PSObject.Properties['logicalUnitNumber'] -and -not [string]::IsNullOrWhiteSpace([string]$m.logicalUnitNumber)) {
+                    $lunValue = [string]$m.logicalUnitNumber
+                }
+
+                if ($lunValue) {
+                    $paths = foreach ($portalValue in $iscsiPortalValues) {
+                        if (-not [string]::IsNullOrWhiteSpace([string]$portalValue)) {
+                            "/dev/disk/by-path/ip-$portalValue-iscsi-$iscsiTargetName-lun-$lunValue"
+                        }
+                    }
+                    $iscsiByPath = & $joinDisplayValues $paths ' | '
+                }
+            }
             
             [PSCustomObject]@{
-                Volume      = $m.mappableObjectName
-                Host        = $m.targetLabel
-                Transport   = $transport
-                Volume_WWN  = $volumeWwn
-                Target_Hint = $targetHint
-                EUI_Path    = $euiPath
-                ALT_Path    = $altPath
+                Volume       = $m.mappableObjectName
+                Host         = $m.targetLabel
+                Transport    = $transport
+                WWN          = $volumeWwn
+                Hint         = $targetHint
+                'iSCSI Path' = $iscsiByPath
+                'EUI Path'   = $euiPath
+                'Alt Path'   = $altPath
             }
         }
 
         if ($results) {
-            if (Get-Command -Name Format-SpectreTable -ErrorAction SilentlyContinue) {
-                Format-SpectreTable -Data $results
+            $useRowLayout = @($results | Where-Object {
+                ([string]$_.'EUI Path').Length -gt 48 -or
+                ([string]$_.'Alt Path').Length -gt 48 -or
+                ([string]$_.'iSCSI Path').Length -gt 48 -or
+                ([string]$_.Hint).Length -gt 48
+            }).Count -gt 0
+
+            if (-not $useRowLayout) {
+                if (Get-Command -Name Format-SpectreTable -ErrorAction SilentlyContinue) {
+                    Format-SpectreTable -Data $results
+                } else {
+                    $results | Format-Table -AutoSize | Out-String | Write-Host
+                }
             } else {
-                $results | Format-Table -AutoSize | Out-String | Write-Host
+                $i = 0
+                foreach ($result in $results) {
+                    $i++
+                    $mappingTitle = "Mapping $i"
+                    if (-not [string]::IsNullOrWhiteSpace([string]$result.Volume) -or -not [string]::IsNullOrWhiteSpace([string]$result.Host)) {
+                        $mappingTitle = "Mapping ${i}: $($result.Volume) -> $($result.Host)"
+                    }
+
+                    Write-SpectreRule -Title $mappingTitle -Alignment Left -Color Grey
+                    $detailRows = @(
+                        [PSCustomObject]@{ Property = 'Volume';     Value = [string]$result.Volume }
+                        [PSCustomObject]@{ Property = 'Host';       Value = [string]$result.Host }
+                        [PSCustomObject]@{ Property = 'Transport';  Value = [string]$result.Transport }
+                        [PSCustomObject]@{ Property = 'WWN';        Value = [string]$result.WWN }
+                        [PSCustomObject]@{ Property = 'Hint';       Value = [string]$result.Hint }
+                        [PSCustomObject]@{ Property = 'iSCSI Path'; Value = [string]$result.'iSCSI Path' }
+                        [PSCustomObject]@{ Property = 'EUI Path';   Value = [string]$result.'EUI Path' }
+                        [PSCustomObject]@{ Property = 'Alt Path';   Value = [string]$result.'Alt Path' }
+                    )
+
+                    if (Get-Command -Name Format-SpectreTable -ErrorAction SilentlyContinue) {
+                        Format-SpectreTable -Data $detailRows -Color Grey
+                    } else {
+                        $detailRows | Format-Table -AutoSize | Out-String | Write-Host
+                    }
+                }
             }
         } else {
             Write-SpectreHost -Message "[yellow]No mapped volumes found for configured Host Group/Host identifier/path output.[/]"

@@ -48,6 +48,317 @@ function Get-SanmoxVolume {
     }
 }
 
+function Convert-SanmoxVolumeSizeInput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InputText
+    )
+
+    if ($InputText -notmatch '^\s*(?<size>\d+)\s*(?<unit>mib|mi|mb|m|gib|gi|gb|g|tib|ti|tb|t)?\s*$') {
+        return $null
+    }
+
+    $size = [int]$matches['size']
+    $rawUnit = if ($matches['unit']) { $matches['unit'].ToLowerInvariant() } else { '' }
+
+    $normalizedUnit = switch ($rawUnit) {
+        ''    { 'gb' }
+        'm'   { 'mb' }
+        'mi'  { 'mb' }
+        'mib' { 'mb' }
+        'mb'  { 'mb' }
+        'g'   { 'gb' }
+        'gi'  { 'gb' }
+        'gib' { 'gb' }
+        'gb'  { 'gb' }
+        't'   { 'tb' }
+        'ti'  { 'tb' }
+        'tib' { 'tb' }
+        'tb'  { 'tb' }
+        default { $null }
+    }
+
+    if ($null -eq $normalizedUnit) {
+        return $null
+    }
+
+    $displayUnit = switch ($normalizedUnit) {
+        'mb' { 'MB' }
+        'gb' { 'GB' }
+        'tb' { 'TB' }
+    }
+
+    [PSCustomObject]@{
+        Size           = $size
+        SizeUnit       = $normalizedUnit
+        DisplayUnit    = $displayUnit
+        OriginalInput  = $InputText.Trim()
+    }
+}
+
+function Get-SanmoxTargetTransport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TargetName
+    )
+
+    $getHostProtocols = {
+        param($HostObject)
+
+        $protocols = @()
+
+        foreach ($hostSidePort in @($HostObject.hostSidePorts)) {
+            if ($null -ne $hostSidePort -and -not [string]::IsNullOrWhiteSpace([string]$hostSidePort.type)) {
+                $protocols += [string]$hostSidePort.type
+            }
+        }
+
+        foreach ($initiator in @($HostObject.initiators)) {
+            if ($null -ne $initiator.nodeName -and -not [string]::IsNullOrWhiteSpace([string]$initiator.nodeName.ioInterfaceType)) {
+                $protocols += [string]$initiator.nodeName.ioInterfaceType
+            }
+        }
+
+        foreach ($port in @($HostObject.ports)) {
+            if ($null -ne $port) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$port.type)) {
+                    $protocols += [string]$port.type
+                } elseif (-not [string]::IsNullOrWhiteSpace([string]$port.portType)) {
+                    $protocols += [string]$port.portType
+                }
+            }
+        }
+
+        @(
+            $protocols |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+                Select-Object -Unique
+        )
+    }
+
+    $allHostGroups = @(Get-SANtricityHostGroup)
+    $allHosts = @(Get-SANtricityHost)
+
+    $existingGroup = $allHostGroups | Where-Object { $_.name -eq $TargetName -or $_.label -eq $TargetName } | Select-Object -First 1
+    if ($existingGroup) {
+        $memberHosts = @($allHosts | Where-Object { $_.clusterRef -eq $existingGroup.id })
+        $protocols = foreach ($memberHost in $memberHosts) {
+            & $getHostProtocols $memberHost
+        }
+        $uniqueProtocols = @($protocols | Select-Object -Unique)
+        if ($uniqueProtocols.Count -eq 0) { return 'unknown' }
+        if ($uniqueProtocols.Count -eq 1) { return [string]$uniqueProtocols[0] }
+        return ($uniqueProtocols -join '+')
+    }
+
+    $existingHost = $allHosts | Where-Object { $_.name -eq $TargetName -or $_.label -eq $TargetName } | Select-Object -First 1
+    if ($existingHost) {
+        $hostProtocols = @(& $getHostProtocols $existingHost)
+        $uniqueHostProtocols = @($hostProtocols | Select-Object -Unique)
+        if ($uniqueHostProtocols.Count -eq 0) { return 'unknown' }
+        if ($uniqueHostProtocols.Count -eq 1) { return [string]$uniqueHostProtocols[0] }
+        return ($uniqueHostProtocols -join '+')
+    }
+
+    return 'unknown'
+}
+
+function Get-SanmoxPveCliHintData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VolumeName,
+
+        [string]$PreferredTargetName
+    )
+
+    $mappings = @(Get-SANtricityMappingsReport | Where-Object { $_.mappableObjectName -eq $VolumeName })
+    if ($PreferredTargetName) {
+        $preferredMappings = @($mappings | Where-Object {
+            ([string]$_.targetLabel -eq $PreferredTargetName) -or ([string]$_.hostGroup -eq $PreferredTargetName)
+        })
+        if ($preferredMappings.Count -gt 0) {
+            $mappings = $preferredMappings
+        }
+    }
+
+    if ($mappings.Count -eq 0) {
+        return $null
+    }
+
+    $mapping = $mappings | Select-Object -First 1
+    $targetName = if ($mapping.PSObject.Properties['hostGroup'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.hostGroup)) {
+        [string]$mapping.hostGroup
+    } elseif ($mapping.PSObject.Properties['targetLabel'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.targetLabel)) {
+        [string]$mapping.targetLabel
+    } else {
+        [string]$PreferredTargetName
+    }
+
+    $transport = if (-not [string]::IsNullOrWhiteSpace($targetName)) {
+        Get-SanmoxTargetTransport -TargetName $targetName
+    } else {
+        'unknown'
+    }
+
+    $isNvmeTransport = [string]$transport -match 'nvme'
+    $isIscsiTransport = [string]$transport -match 'iscsi'
+
+    $volumeWwn = if ($mapping.PSObject.Properties['volumeWwn'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.volumeWwn)) {
+        [string]$mapping.volumeWwn
+    } else {
+        ''
+    }
+
+    $euiValue = ''
+    if ($mapping.PSObject.Properties['volumeEui'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.volumeEui)) {
+        $euiValue = [string]$mapping.volumeEui
+    } elseif ($volumeWwn) {
+        $euiValue = $volumeWwn
+    }
+
+    $euiPath = ''
+    if ($isNvmeTransport -and $euiValue) {
+        $normalizedEui = ($euiValue -replace '^0x', '').Trim().ToLowerInvariant()
+        $euiPath = "/dev/disk/by-id/nvme-eui.$normalizedEui"
+    }
+
+    $altPath = ''
+    if ($isNvmeTransport -and $null -ne $mapping.chassisSerialNumber -and $null -ne $mapping.lunId) {
+        $altPath = "/dev/disk/by-id/nvme-NetApp_E-Series_" + $mapping.chassisSerialNumber + "_" + $mapping.lunId
+    }
+
+    $iscsiPaths = @()
+    if ($isIscsiTransport) {
+        try {
+            $iscsiSettings = Get-SANtricityIscsiTargetSetting -ErrorAction Stop
+            $iscsiTargetName = if ($iscsiSettings.nodeName -and $iscsiSettings.nodeName.iscsiNodeName) {
+                [string]$iscsiSettings.nodeName.iscsiNodeName
+            } else {
+                ''
+            }
+
+            $lunValue = ''
+            if ($mapping.PSObject.Properties['lunId'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.lunId)) {
+                $lunValue = [string]$mapping.lunId
+            } elseif ($mapping.PSObject.Properties['lun'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.lun)) {
+                $lunValue = [string]$mapping.lun
+            } elseif ($mapping.PSObject.Properties['logicalUnitNumber'] -and -not [string]::IsNullOrWhiteSpace([string]$mapping.logicalUnitNumber)) {
+                $lunValue = [string]$mapping.logicalUnitNumber
+            }
+
+            if ($iscsiTargetName -and $lunValue) {
+                $iscsiPaths = foreach ($portal in @($iscsiSettings.portals)) {
+                    $ipv4Address = if ($portal.ipAddress) { $portal.ipAddress.ipv4Address } else { $null }
+                    if ([string]::IsNullOrWhiteSpace([string]$ipv4Address)) { continue }
+                    $portalLabel = if ($null -ne $portal.tcpListenPort) {
+                        "$ipv4Address`:$($portal.tcpListenPort)"
+                    } else {
+                        [string]$ipv4Address
+                    }
+                    "/dev/disk/by-path/ip-$portalLabel-iscsi-$iscsiTargetName-lun-$lunValue"
+                }
+            }
+        } catch {
+        }
+    }
+
+    $primaryPath = if ($isNvmeTransport -and $euiPath) {
+        $euiPath
+    } elseif ($isNvmeTransport -and $altPath) {
+        $altPath
+    } elseif ($iscsiPaths.Count -gt 0) {
+        [string]$iscsiPaths[0]
+    } else {
+        ''
+    }
+
+    [PSCustomObject]@{
+        VolumeName   = $VolumeName
+        TargetName   = $targetName
+        Transport    = [string]$transport
+        PrimaryPath  = $primaryPath
+        IscsiPaths   = @($iscsiPaths)
+        EuiPath      = $euiPath
+        AltPath      = $altPath
+        VgName       = if ($VolumeName -match '^vg_') { $VolumeName } else { "vg_$VolumeName" }
+        VolumeWwn    = $volumeWwn
+    }
+}
+
+function Show-SanmoxPveCliHint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VolumeName,
+
+        [string]$PreferredTargetName
+    )
+
+    $volNameSafe = $VolumeName.ToString().Replace('[', '[[').Replace(']', ']]')
+    $answer = Read-SpectreSelection -Title "Would you like to show a hint for PVE CLI commands to create PV and VG on '$volNameSafe'?" -Choices @(
+        'Y. Yes',
+        'N. No'
+    ) -Color Turquoise2
+
+    if ($answer -notmatch '^Y') {
+        return
+    }
+
+    Write-SpectreHost -Message "[cyan]Okay. Make sure the device is visible on the correct PVE node and not currently in use.[/]"
+
+    try {
+        $hintData = Get-SanmoxPveCliHintData -VolumeName $VolumeName -PreferredTargetName $PreferredTargetName
+        if ($null -eq $hintData) {
+            Write-SpectreHost -Message "[yellow]Could not derive a mapped device path for volume '$volNameSafe' yet. Discover/login/connect the volume on the PVE host first, then use lsblk or /dev/disk/by-id to find it.[/]"
+            return
+        }
+
+        Write-SpectreHost -Message "[cyan]Generated PVE CLI commands for volume '$volNameSafe':[/]"
+        Write-SpectreHost -Message "[cyan]Note:[/] Run these on the correct PVE node after iSCSI login or NVMe connect/discover completes. Verify the device path before writing labels or LVM metadata."
+
+        if ([string]::IsNullOrWhiteSpace($hintData.PrimaryPath)) {
+            Write-SpectreHost -Message "[yellow]No single primary device path could be derived automatically for transport '$($hintData.Transport)'.[/]"
+            if ($hintData.EuiPath) {
+                Write-SpectreHost -Message "Preferred NVMe EUI path: $($hintData.EuiPath)"
+            }
+            if ($hintData.AltPath) {
+                Write-SpectreHost -Message "Alternate NVMe path: $($hintData.AltPath)"
+            }
+            foreach ($candidatePath in @($hintData.IscsiPaths)) {
+                Write-SpectreHost -Message "Candidate iSCSI path: $candidatePath"
+            }
+            Write-SpectreHost -Message "[yellow]After the device appears on the host, create the VG with:[/] vgcreate $($hintData.VgName) <device-path>"
+            return
+        }
+
+        Write-SpectreHost -Message "parted $($hintData.PrimaryPath) mklabel gpt"
+        Write-SpectreHost -Message "pvcreate -y -ff $($hintData.PrimaryPath)"
+        Write-SpectreHost -Message "vgcreate $($hintData.VgName) $($hintData.PrimaryPath)"
+
+        if ($hintData.EuiPath -or $hintData.AltPath -or $hintData.IscsiPaths.Count -gt 1) {
+            Write-SpectreHost -Message "[yellow]Prefer the most persistent path available:[/]"
+            if ($hintData.EuiPath) {
+                Write-SpectreHost -Message "- NVMe EUI path: $($hintData.EuiPath)"
+            }
+            if ($hintData.AltPath) {
+                Write-SpectreHost -Message "- NVMe alternate path: $($hintData.AltPath)"
+            }
+            foreach ($candidatePath in @($hintData.IscsiPaths)) {
+                Write-SpectreHost -Message "- iSCSI path: $candidatePath"
+            }
+        }
+
+        Write-SpectreHost -Message "[yellow]PVE 'shared 1' is not the same as LVM lvmlockd shared VGs (`vgcreate --shared`). For standard Proxmox shared LVM-on-SAN workflows, use regular `vgcreate` unless you have explicitly designed for lvmlockd/sanlock or dlm.[/]"
+    } catch {
+        $hintErr = $_.ToString().Replace('[', '(').Replace(']', ')')
+        Write-SpectreHost -Message "[yellow]Failed to generate CLI hint: $hintErr[/]"
+    }
+}
+
 function New-SanmoxVolume {
     [CmdletBinding()]
     param()
@@ -64,19 +375,21 @@ function New-SanmoxVolume {
         return
     }
 
-    $volSizeStr = Read-SpectreText -Message "Enter the size (e.g. 100GB, 2TB)"
+    $volSizeStr = Read-SpectreText -Message "Enter the size (examples: 10, 10Gi, 10GiB, 10GB, 10G; 10 defaults to SANtricity 'gb')"
     if ([string]::IsNullOrWhiteSpace($volSizeStr) -or $volSizeStr -match '^(?i)c(ancel)?$') {
         Write-SpectreHost -Message "[cyan]Create volume cancelled.[/]"
         return
     }
 
-    if ($volSizeStr -match '^\s*(?<size>\d+)\s*(?<unit>[gmtGDT]?[bB])?\s*$') {
-        $volSize = [int]$matches['size']
-        $volUnit = if ($matches['unit']) { $matches['unit'].ToLower() } else { 'gb' }
-    } else {
-        Write-SpectreHost -Message "[red]Invalid size format. Please use a number followed by GB or TB.[/]"
+    $parsedCreateSize = Convert-SanmoxVolumeSizeInput -InputText $volSizeStr
+    if ($null -eq $parsedCreateSize) {
+        Write-SpectreHost -Message "[red]Invalid size format. Use examples like 10, 10Gi, 10GiB, 10GB, 10G, 2TB, or 512MB.[/]"
         return
     }
+
+    $volSize = $parsedCreateSize.Size
+    $volUnit = $parsedCreateSize.SizeUnit
+    $volDisplayUnit = $parsedCreateSize.DisplayUnit
 
     $volNameSafe = $volName.ToString().Replace('[', '[[').Replace(']', ']]')
     $poolNameConfig = $Global:sanConfig.SanPoolName
@@ -97,8 +410,9 @@ function New-SanmoxVolume {
         Write-SpectreHost -Message "[yellow]Could not query pool info to check if it's a DDP. Proceeding with default RAID setting.[/]"
     }
 
-    Write-SpectreHost -Message "[cyan]Creating volume '$volNameSafe' with size $volSize $volUnit on pool $poolName...[/]"
+    Write-SpectreHost -Message "[cyan]Creating volume '$volNameSafe' with size $volSize $volDisplayUnit (SANtricity API unit: $volUnit) on pool $poolName...[/]"
     try {
+        $mappingSucceeded = $false
         $splat = @{
             Name = $volName
             Size = $volSize
@@ -125,12 +439,14 @@ function New-SanmoxVolume {
                 # Try as a Host Group first
                 try {
                     New-SANtricityVolumeMapping -VolumeName $volName -HostGroupName $selectedGroup -ErrorAction Stop | Out-Null
+                    $mappingSucceeded = $true
                     Write-SpectreHost -Message "[green]Successfully mapped volume to Host Group '$selectedGroupSafe'![/]"
                 } catch {
                     if ($_.Exception.Message -match "not found") {
                         # Fallback to try mapping as a standalone Host
                         Write-SpectreHost -Message "[yellow]Host Group '$selectedGroupSafe' not found. Trying as a standalone Host instead...[/]"
                         New-SANtricityVolumeMapping -VolumeName $volName -HostName $selectedGroup -ErrorAction Stop | Out-Null
+                        $mappingSucceeded = $true
                         Write-SpectreHost -Message "[green]Successfully mapped volume to Host '$selectedGroupSafe'![/]"
                     } else {
                         throw $_
@@ -139,6 +455,10 @@ function New-SanmoxVolume {
             } catch {
                 $mapErr = $_.ToString().Replace('[', '(').Replace(']', ')')
                 Write-SpectreHost -Message "[yellow]Volume created, but failed to map to '$selectedGroupSafe': $mapErr[/]"
+            }
+
+            if ($mappingSucceeded) {
+                Show-SanmoxPveCliHint -VolumeName $volName -PreferredTargetName $selectedGroup
             }
         }
     } catch {
@@ -261,18 +581,19 @@ function Set-SanmoxVolume {
     try {
         if ($action -match "^1") {
             # Since Read-SpectreText expects input, we only ask for size if they explicitly chose to resize
-            $newSizeStr = Read-SpectreText -Message "Enter new total size (e.g., 200GB, 1TB). Current size: $currentSizeGiB GiB"
+            $newSizeStr = Read-SpectreText -Message "Enter new total size (examples: 200, 200Gi, 200GB, 1TB). Current size: $currentSizeGiB GiB"
             
-            if ($newSizeStr -match '^\s*(?<size>\d+)\s*(?<unit>[gmtGDT]?[bB])?\s*$') {
-                $newSize = [int]$matches['size']
-                $newUnit = if ($matches['unit']) { $matches['unit'].ToLower() } else { 'gb' }
-            } else {
-                Write-SpectreHost -Message "[red]Invalid size format. Please use a number followed by GB or TB.[/]"
+            $parsedResizeSize = Convert-SanmoxVolumeSizeInput -InputText $newSizeStr
+            if ($null -eq $parsedResizeSize) {
+                Write-SpectreHost -Message "[red]Invalid size format. Use examples like 200, 200Gi, 200GiB, 200GB, 1TB, or 512MB.[/]"
                 return
             }
 
+            $newSize = $parsedResizeSize.Size
+            $newUnit = $parsedResizeSize.SizeUnit
+            $newDisplayUnit = $parsedResizeSize.DisplayUnit
+
             $unitFactor = switch ($newUnit) {
-                'b'  { 1 }
                 'mb' { 1MB }
                 'gb' { 1GB }
                 'tb' { 1TB }
@@ -288,7 +609,7 @@ function Set-SanmoxVolume {
                 return
             }
 
-            Write-SpectreHost -Message "[cyan]Resizing volume to $newSize $newUnit...[/]"
+            Write-SpectreHost -Message "[cyan]Resizing volume to $newSize $newDisplayUnit (SANtricity API unit: $newUnit)...[/]"
             Resize-SANtricityVolume -VolumeName $volName -Size $newSize -SizeUnit $newUnit
             Write-SpectreHost -Message "[green]Volume expanded on SANtricity![/]"
             Write-SpectreHost -Message "[yellow]=> REMINDER: To use the new capacity in Proxmox, rescan the disk and run 'pvresize /dev/disk/by-id/...<your-device-id>' on the PVE host [bold]where the volume is active[/].[/]"
