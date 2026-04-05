@@ -214,14 +214,42 @@ function Set-SanmoxVolume {
         return
     }
 
-    $volumeChoices = @("Cancel") + @($volumes | Sort-Object name | Select-Object -ExpandProperty name)
+    $sortedVolumes = @($volumes | Sort-Object name)
+    $volumeTable = @()
+    for ($i = 0; $i -lt $sortedVolumes.Count; $i++) {
+        $volumeTable += [PSCustomObject]@{
+            'No' = $i + 1
+            'Volume' = $sortedVolumes[$i].name
+            'Size(GiB)' = [math]::Round(($sortedVolumes[$i].capacity / 1GB), 2)
+        }
+    }
+
+    Write-SpectreHost -Message "[cyan]Available volumes (sorted):[/]"
+    if (Get-Command -Name Format-SpectreTable -ErrorAction SilentlyContinue) {
+        Format-SpectreTable -Data $volumeTable
+    } else {
+        $volumeTable | Format-Table -AutoSize | Out-String | Write-Host
+    }
+
+    $volumeChoices = @("0. Cancel") + @($volumeTable | ForEach-Object { "$($_.No). $($_.Volume) ($($_.'Size(GiB)') GiB)" })
     $volSelection = Read-SpectreSelection -Title "Select SANtricity volume to modify" -Choices $volumeChoices -Color Turquoise2 -PageSize 20 -EnableSearch
-    if ($volSelection -eq "Cancel") {
+    if ($volSelection -match '^0\.') {
         Write-SpectreHost -Message "[cyan]Operation cancelled.[/]"
         return
     }
 
-    $volName = $volSelection
+    $selectedIndex = 0
+    if ($volSelection -match '^(\d+)\.') {
+        $selectedIndex = [int]$matches[1]
+    }
+    if ($selectedIndex -lt 1 -or $selectedIndex -gt $sortedVolumes.Count) {
+        Write-SpectreHost -Message "[red]Invalid volume selection.[/]"
+        return
+    }
+
+    $selectedVolume = $sortedVolumes[$selectedIndex - 1]
+    $volName = $selectedVolume.name
+    $currentSizeGiB = [math]::Round(($selectedVolume.capacity / 1GB), 2)
 
     $action = Read-SpectreSelection -Title "What would you like to modify?" -Choices @(
         "1. Resize Volume",
@@ -233,13 +261,30 @@ function Set-SanmoxVolume {
     try {
         if ($action -match "^1") {
             # Since Read-SpectreText expects input, we only ask for size if they explicitly chose to resize
-            $newSizeStr = Read-SpectreText -Message "Enter new total size (e.g., 200GB, 1TB)"
+            $newSizeStr = Read-SpectreText -Message "Enter new total size (e.g., 200GB, 1TB). Current size: $currentSizeGiB GiB"
             
             if ($newSizeStr -match '^\s*(?<size>\d+)\s*(?<unit>[gmtGDT]?[bB])?\s*$') {
                 $newSize = [int]$matches['size']
                 $newUnit = if ($matches['unit']) { $matches['unit'].ToLower() } else { 'gb' }
             } else {
                 Write-SpectreHost -Message "[red]Invalid size format. Please use a number followed by GB or TB.[/]"
+                return
+            }
+
+            $unitFactor = switch ($newUnit) {
+                'b'  { 1 }
+                'mb' { 1MB }
+                'gb' { 1GB }
+                'tb' { 1TB }
+                default {
+                    Write-SpectreHost -Message "[red]Unsupported size unit '$newUnit'. Please use MB, GB, or TB.[/]"
+                    return
+                }
+            }
+            $targetSizeBytes = [int64]$newSize * [int64]$unitFactor
+            $currentSizeBytes = [int64]$selectedVolume.capacity
+            if ($targetSizeBytes -le $currentSizeBytes) {
+                Write-SpectreHost -Message "[yellow]Resize cancelled. Target size must be greater than current size ($currentSizeGiB GiB).[/]"
                 return
             }
 

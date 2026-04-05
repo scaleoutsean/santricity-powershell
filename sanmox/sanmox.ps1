@@ -44,6 +44,8 @@ if (Test-Path -Path $configFile) {
     $Global:sanConfig = $defaultConfig
 }
 
+$hasPlaintextPveSecret = -not [string]::IsNullOrWhiteSpace([string]$Global:sanConfig.PveSecret)
+
 # --- Spectre/Dependencies Setup ---
 $modules = @('PwshSpectreConsole')
 foreach ($module in $modules) {
@@ -71,6 +73,12 @@ foreach ($sanmod in $sanmoxModules) {
     } else {
         Write-Host "Sanmox module not found: ${sanmod}.psm1" -ForegroundColor Yellow
     }
+}
+
+if ($hasPlaintextPveSecret) {
+    $warningProfileName = [System.IO.Path]::GetFileName($configFile)
+    $warningProfileNameSafe = if ($warningProfileName) { $warningProfileName.Replace('[', '[[').Replace(']', ']]') } else { 'sanconfig.json' }
+    Write-SpectreHost -Message "[yellow]Warning: plaintext PVE secret detected in profile [white]$warningProfileNameSafe[/] (`PveSecret`). SANmox will use it only if no encrypted PVE credential is already saved. Remove `PveSecret` from the config after migrating it to the secure credential file.[/]"
 }
 
 # --- Authentication Handling ---
@@ -103,7 +111,11 @@ if (Test-Path -Path $pveCredFile) {
     }
 }
 
-if (-not $Global:pvePass -and -not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveApiUri)) {
+if (
+    -not $Global:pvePass -and
+    [string]::IsNullOrWhiteSpace([string]$Global:sanConfig.PveSecret) -and
+    -not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveApiUri)
+) {
     $plainPvePass = Read-Host -AsSecureString "Please enter password/secret for PVE user '$($Global:sanConfig.PveUser)' (input hidden)"
     $Global:pvePass = $plainPvePass
     
@@ -132,12 +144,13 @@ do {
         "3. SANtricity Host Groups :shield:",
         "4. SANtricity Storage Pools (DDP) :up_down_arrow:",
         "5. Volume Utilization & Target Settings :eyes:",
-        "6. First-time setup / Config :gear:",
+        "6. Get system performance snapshot :bar_chart:",
+        "7. First-time setup / Config :gear:",
         "Q. Quit :stop_sign:"
     )
     $MainMenu = Read-SpectreSelection -Title "Select a [Blue]task[/] using :up_down_arrow: or search" -Choices $mainChoices -Color Turquoise2 -PageSize 10 -EnableSearch
 
-    if ($MainMenu -match '^[1-6qQ]\.?') {
+    if ($MainMenu -match '^[1-7qQ]\.?' ) {
         $MainMenu = $MainMenu.Substring(0, 1).ToUpper()
     } else {
         Write-SpectreHost -Message "Invalid selection. Please try again."
@@ -152,7 +165,7 @@ do {
                 Write-SpectreRule -Title "SANtricity-Proxmox Toolbox :toolbox: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Yellow
                 $toolboxChoices = @(
                     "1. [Blue]View[/] SANtricity-backed PVE Datastores and Mappings :eyes:",
-                    "2. [Blue]View[/] Configured Host Group Disk Identifiers & Paths :eyes:",
+                    "2. [Blue]View[/] Configured Host Group/Host Disk Identifiers & Paths :eyes:",
                     "3. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
                     "4. [Purple_2]Remove[/] [orange3]PVE[/] datastore (WARNING: Datastore must be empty) :litter_in_bin_sign:",
                     "B. Back to [Blue]main menu[/] :house:"
@@ -195,7 +208,8 @@ do {
         '3' { Get-SanmoxHostGroup }
         '4' { Get-SanmoxStoragePoolOverview }
         '5' { Get-SanmoxTargetOverview }
-        '6' { Write-SpectreHost -Message "TODO: Settings / Configuration Module" }
+        '6' { Get-SanmoxSystemPerformanceSnapshot }
+        '7' { Write-SpectreHost -Message "TODO: Settings / Configuration Module" }
         'Q' { Write-SpectreHost -Message "Exiting Sanmox. Have a great day!" }
     }
 } until ($MainMenu -eq 'Q')

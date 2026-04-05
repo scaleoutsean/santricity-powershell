@@ -16,7 +16,7 @@ This TUI has the following advantages:
 SANmox is **not** meant to be installed on PVE nodes. It is meant to be installed on a management workstation that can reach PVE hosts and SANtricity management IP.
 
 - Assuming your workstation is Debian Trixie, you should be able to use [PowerShell 7.6 LTS](https://github.com/PowerShell/PowerShell/releases/download/v7.6.0/powershell-lts_7.6.0-1.deb_amd64.deb). If you're on other OS, get a recent PowerShell 7.6 or 7.5
-- Install PowerShell module [Spectre Console](https://spectreconsole.net/): `Install-Module PwshSpectreConsole -Scope CurrentUser`
+- Install PowerShell module [Spectre Console](https://pwshspectreconsole.com/guides/get-started/): `Install-Module PwshSpectreConsole -Scope CurrentUser`
 - Clone this entire repo, change directory to `./sanmox`. Copy `sanconfig.json.example` to `sanconfig.json`:
   - `SanApiUri`: SANtricity API endpoint
   - `SanUser`: SANtricity `admin` or `storage` (I haven't tried, but might work fine) account
@@ -35,6 +35,8 @@ Your (encrypted) credentials will be securely prompted for on first launch and o
 
 Do not leave your passwords inside `sanconfig.json`.
 
+If `PveSecret` is present in the config, SANmox will warn at startup and use it only as a fallback when no encrypted PVE credential has been saved yet. Treat this as a temporary migration aid, not the normal operating mode.
+
 ```powershell
 PowerShell 7.6.0
 PS /home/sean/code/santricity-powershell> ./sanmox/sanmox.ps1                                        
@@ -47,6 +49,36 @@ Do you want to save this PVE password securely for future sessions? (Y/n):
 # Alternate profile/config example
 PS /home/sean/code/santricity-powershell> ./sanmox/sanmox.ps1 -Config /home/sean/configs/sanconfig.cluster-b.json
 ```
+
+## Use
+
+Create a SANtricity host group for PVE datacenter (cluster) from the UI or other (PowerShell, Python, etc):
+
+![Create SANtricity host group for PVE datacenter (cluster)](./images/step_01_create_santricity_host_group.png)
+
+Create a SANtricity volume (example: `sanmox`) in **SANtricity Volumes**:
+
+![Create volume in SANtricity Volume menu (example: `sanmox`)](./images/step_02_create_santricity_volume.png)
+
+iSCSI may be able to discover the new target if previous volumes exists (i.e. target portal is known). PVE 9.1 can't scan NVMe/RoCE. Either way, rescan from storage using `iscsiadm` or `nvme` (client) and add a VG on the new volume. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding local LVM.
+
+![Create VG (`vg_sanmox`)](./images/step_03_create_vg.png)
+
+Verify the VG has been created:
+
+![vg_sanmox has been created](./images/step_04_return_to_sanmox.png)
+
+In **SANtricity-Proxmox Toolbox** (top level menu), create new PVE datastore on `vg_sanmox`:
+
+![Create LVM datastore on VG](./images/step_05_create_shared_lvm_datastore.png)
+
+That will setup shared storage LVM and enable other features that you can expect with `cat /etc/pve/storage.cfg`.
+
+To remove shared storage LVM, remove all VMs/CTs, and use the TUI in reverse. The VG step has to be done manually as well. You may also disconnect from iSCSI or NVMe if you wish.
+
+There are some other menu items made to make it possible to avoid using Web browser, such as high-level capacity and performance reports.
+
+![Other features](./images/step_06_other_features.png)
 
 ## SANmox features
 

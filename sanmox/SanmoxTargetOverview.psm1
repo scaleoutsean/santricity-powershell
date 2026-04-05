@@ -95,17 +95,20 @@ function Get-SanmoxTargetOverview {
     try {
         $nvme = Get-SANtricityNvmeTargetSetting
         if ($nvme) {
-            $nvmeTable = @()
-            foreach ($prop in ($nvme | Get-Member -MemberType NoteProperty)) {
-                $val = $nvme.($prop.Name)
-                if ($null -ne $val -and $val -isnot [System.Management.Automation.PSCustomObject] -and $val -isnot [System.Array]) {
-                    $nvmeTable += [PSCustomObject]@{ Property = $prop.Name; Value = $val.ToString() }
+            $nvmeNodeName = $null
+            if ($nvme.PSObject.Properties['nodeName'] -and $null -ne $nvme.nodeName) {
+                if ($nvme.nodeName.PSObject.Properties['nvmeNodeName']) {
+                    $nvmeNodeName = $nvme.nodeName.nvmeNodeName
                 }
             }
-            if ($nvmeTable.Count -gt 0) {
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$nvmeNodeName)) {
+                $nvmeTable = @(
+                    [PSCustomObject]@{ Property = 'nvmeNodeName'; Value = [string]$nvmeNodeName }
+                )
                 try { Format-SpectreTable -Data $nvmeTable } catch { $nvmeTable | Format-Table -AutoSize }
             } else {
-                Write-SpectreHost -Message "[yellow]NVMe-oF response contained no scalar properties.[/]"
+                Write-SpectreHost -Message "[yellow]NVMe-oF response did not include nodeName.nvmeNodeName.[/]"
             }
         } else {
             Write-SpectreHost -Message "[yellow]No NVMe-oF target settings returned.[/]"
