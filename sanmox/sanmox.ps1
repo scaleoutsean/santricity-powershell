@@ -143,8 +143,8 @@ function Test-SanmoxHostObjectUniqueness {
     }
 
     $hostKeySet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($host in $hosts) {
-        foreach ($candidate in @($host.name, $host.label)) {
+    foreach ($sanHost in $hosts) {
+        foreach ($candidate in @($sanHost.name, $sanHost.label)) {
             $name = ([string]$candidate).Trim()
             if (-not [string]::IsNullOrWhiteSpace($name)) {
                 [void]$hostKeySet.Add($name)

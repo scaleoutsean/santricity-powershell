@@ -102,6 +102,8 @@ function Get-SanmoxSystemPerformanceSnapshot {
     [CmdletBinding()]
     param()
 
+    $requestedWaitSeconds = 60
+
     # Counters to delta between the two samples
     $liveProps = @(
         'totalIopsServiced', 'totalBytesServiced',
@@ -137,8 +139,8 @@ function Get-SanmoxSystemPerformanceSnapshot {
             return
         }
 
-        Write-SpectreHost -Message "[cyan]Waiting 60 seconds to collect counter deltas...[/]"
-        Start-Sleep -Seconds 60
+        Write-SpectreHost -Message "[cyan]Waiting $requestedWaitSeconds seconds to collect counter deltas (CLI wait). SANtricity performance collection interval may differ.[/]"
+        Start-Sleep -Seconds $requestedWaitSeconds
 
         $finalPayload = Get-SANtricityLiveStatistics
         $finalStats = @(& $extractSystemStats $finalPayload)
@@ -153,7 +155,7 @@ function Get-SanmoxSystemPerformanceSnapshot {
             $item     = $finalStats[$i]
             $previous = $baselineStats[$i]
 
-            $intervalSeconds = 60
+            $intervalSeconds = $requestedWaitSeconds
             if ($item.PSObject.Properties['observedTimeInMS'] -and $previous.PSObject.Properties['observedTimeInMS']) {
                 $curMs = 0L; $prevMs = 0L
                 if ([long]::TryParse([string]$item.observedTimeInMS, [ref]$curMs) -and
@@ -178,7 +180,7 @@ function Get-SanmoxSystemPerformanceSnapshot {
             # Derive operator-friendly metrics
             $totalIops = $d['totalIopsServiced']
             [PSCustomObject]@{
-                'Int(s)'      = $intervalSeconds
+                'Interval(s)' = $intervalSeconds
                 'IOPS/s'      = [int]($totalIops / $intervalSeconds)
                 'MiB/s'       = [math]::Round($d['totalBytesServiced'] / $intervalSeconds / 1MB, 2)
                 'Rd IOPS/s'   = [int]($d['readIopsTotal'] / $intervalSeconds)
@@ -199,16 +201,19 @@ function Get-SanmoxSystemPerformanceSnapshot {
 
         # Build a small info table from the final sample (observedTime + arrayWwn)
         $lastItem = $tableData[0].'_item'
+        $observedInterval = [string]$tableData[0].'Interval(s)'
         $infoRows = @(
-            [PSCustomObject]@{ Property = 'Observed time'; Value = if ($lastItem.PSObject.Properties['observedTime']) { [string]$lastItem.observedTime } else { '(not reported)' } }
-            [PSCustomObject]@{ Property = 'Array WWN';     Value = if ($lastItem.PSObject.Properties['arrayWwn'])     { [string]$lastItem.arrayWwn }     else { '(not reported)' } }
+            [PSCustomObject]@{ Property = 'Observed time';        Value = if ($lastItem.PSObject.Properties['observedTime']) { [string]$lastItem.observedTime } else { '(not reported)' } }
+            [PSCustomObject]@{ Property = 'Array WWN';            Value = if ($lastItem.PSObject.Properties['arrayWwn'])     { [string]$lastItem.arrayWwn }     else { '(not reported)' } }
+            [PSCustomObject]@{ Property = 'CLI wait request (s)'; Value = [string]$requestedWaitSeconds }
+            [PSCustomObject]@{ Property = 'Observed interval (s)';Value = if ([string]::IsNullOrWhiteSpace($observedInterval)) { '(not reported)' } else { $observedInterval } }
         )
 
         # Strip the helper column before rendering the perf table
         $perfData = $tableData | Select-Object * -ExcludeProperty '_item'
 
         Write-SpectreHost -Message ""
-        Write-SpectreRule -Title "SANtricity System Performance Snapshot (60s delta)" -Alignment Center -Color Blue
+        Write-SpectreRule -Title "SANtricity System Performance Snapshot (per-second normalized)" -Alignment Center -Color Blue
         try {
             Format-SpectreTable -Data $infoRows -Color Grey
         } catch {
@@ -219,6 +224,8 @@ function Get-SanmoxSystemPerformanceSnapshot {
         } catch {
             $perfData | Format-Table -AutoSize | Out-String | Write-Host
         }
+
+        Write-SpectreHost -Message "[grey]Note: Rate columns (IOPS/s, MiB/s) are normalized using Observed interval (s), not a fixed 60-second assumption.[/]"
 
         Write-SpectreHost -Message ""
         Write-SpectreHost -Message "[grey]Press Enter to return to the main menu...[/]"
