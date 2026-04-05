@@ -12,6 +12,50 @@ function Get-SanmoxStorageMap {
             return
         }
 
+        $configuredTargetsRaw = @($Global:sanConfig.SanHostGroupName | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        $configuredMatchSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        foreach ($target in $configuredTargetsRaw) {
+            [void]$configuredMatchSet.Add(([string]$target).Trim())
+        }
+
+        if ($configuredTargetsRaw.Count -gt 0) {
+            $allHostGroups = @(Get-SANtricityHostGroup)
+            $allHosts = @(Get-SANtricityHost)
+
+            foreach ($configuredTarget in $configuredTargetsRaw) {
+                $configuredName = [string]$configuredTarget
+
+                $existingGroup = $allHostGroups | Where-Object { $_.name -eq $configuredName -or $_.label -eq $configuredName } | Select-Object -First 1
+                if ($existingGroup) {
+                    foreach ($groupAlias in @([string]$existingGroup.name, [string]$existingGroup.label)) {
+                        if (-not [string]::IsNullOrWhiteSpace($groupAlias)) {
+                            [void]$configuredMatchSet.Add($groupAlias)
+                        }
+                    }
+
+                    $memberHosts = @($allHosts | Where-Object { $_.clusterRef -eq $existingGroup.id })
+                    foreach ($memberHost in $memberHosts) {
+                        foreach ($hostAlias in @([string]$memberHost.name, [string]$memberHost.label)) {
+                            if (-not [string]::IsNullOrWhiteSpace($hostAlias)) {
+                                [void]$configuredMatchSet.Add($hostAlias)
+                            }
+                        }
+                    }
+                    continue
+                }
+
+                $existingHost = $allHosts | Where-Object { $_.name -eq $configuredName -or $_.label -eq $configuredName } | Select-Object -First 1
+                if ($existingHost) {
+                    foreach ($hostAlias in @([string]$existingHost.name, [string]$existingHost.label)) {
+                        if (-not [string]::IsNullOrWhiteSpace($hostAlias)) {
+                            [void]$configuredMatchSet.Add($hostAlias)
+                        }
+                    }
+                }
+            }
+        }
+
         $tableData = foreach ($row in $report) {
             $sizeGiB = $null
             if ($row.PSObject.Properties['capacity'] -and $null -ne $row.capacity) {
@@ -21,11 +65,19 @@ function Get-SanmoxStorageMap {
                 }
             }
 
+            $targetLabel = if ($row.PSObject.Properties['targetLabel']) { [string]$row.targetLabel } else { '' }
+            $hostGroupLabel = if ($row.PSObject.Properties['hostGroup']) { [string]$row.hostGroup } else { '' }
+            $isConfiguredMapping = $false
+            if ($configuredMatchSet.Count -gt 0) {
+                $isConfiguredMapping = ($targetLabel -and $configuredMatchSet.Contains($targetLabel)) -or ($hostGroupLabel -and $configuredMatchSet.Contains($hostGroupLabel))
+            }
+
             [PSCustomObject]@{
                 Volume       = [string]$row.mappableObjectName
                 'Size(GiB)'  = if ($null -ne $sizeGiB) { $sizeGiB } else { '?' }
                 Pool         = [string]$row.poolName
                 Host         = [string]$row.targetLabel
+                'In Config'  = [string]$isConfiguredMapping
                 'Is Cluster' = [string]$row.isCluster
                 LUN          = if ($row.PSObject.Properties['lunId']) { [string]$row.lunId } else { '' }
             }
@@ -569,5 +621,182 @@ function Get-SanmoxPveDevicePaths {
     } catch {
         $err = $_.ToString().Replace('[', '(').Replace(']', ')')
         Write-SpectreHost -Message "[red]Failed to generate device paths: $err[/]"
+    }
+}
+
+function Get-SanmoxPveHostDiskView {
+    <#
+    .SYNOPSIS
+    Shows E-Series disks as seen by a specific PVE node, cross-referenced against SANtricity volume names.
+    .DESCRIPTION
+    Calls the PVE /nodes/{node}/disks/list?include-partitions=1 API, filters to NetApp E-Series disks,
+    and cross-references each disk's WWN (EUI-128 for NVMe, NAA-6 for iSCSI/FC) against SANtricity
+    volume records so the operator can identify which volume name corresponds to each visible device path.
+    #>
+    [CmdletBinding()]
+    param()
+
+    Write-SpectreRule -Title "PVE Host Disk View (E-Series) :floppy_disk: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Cyan
+
+    if (-not $Global:pveConnected) {
+        Write-SpectreHost -Message "[red]Proxmox VE is not connected. Cannot query PVE node disk list.[/]"
+        Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        return
+    }
+
+    try {
+        # --- 1. Resolve PVE node ---
+        $skipCert = if ($null -ne $Global:sanConfig.SkipCertificateCheck) { [bool]$Global:sanConfig.SkipCertificateCheck } else { $false }
+        $pveUri = $Global:sanConfig.PveApiUri.TrimEnd('/')
+
+        $nodesParams = @{
+            Uri = "$pveUri/api2/json/nodes"
+            Method = "GET"
+            Headers = $Global:pveHeaders
+            SkipHeaderValidation = $true
+        }
+        if ($skipCert) { $nodesParams.Add('SkipCertificateCheck', $true) }
+
+        $nodesResp = Invoke-RestMethod @nodesParams
+        $pveNodes  = @($nodesResp.data | Where-Object { $_.status -eq 'online' } | ForEach-Object { $_.node })
+
+        if ($pveNodes.Count -eq 0) {
+            Write-SpectreHost -Message "[red]No online PVE nodes found.[/]"
+            Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            return
+        }
+
+        $targetNode = if ($pveNodes.Count -eq 1) {
+            Write-SpectreHost -Message "[grey]Auto-selected node: [white]$($pveNodes[0])[/][/]"
+            $pveNodes[0]
+        } else {
+            Read-SpectreSelection -Title "Select PVE node to query" -Choices $pveNodes -Color Turquoise2
+        }
+
+        # --- 2. Usage filter ---
+        $filterChoices = @(
+            "A. All E-Series disks",
+            "U. Unused only (not assigned to LVM / partition / etc.)",
+            "I. In-use only"
+        )
+        $filterSel = Read-SpectreSelection -Title "Filter" -Choices $filterChoices -Color Turquoise2
+        $filterMode = $filterSel.Substring(0, 1).ToUpper()   # A / U / I
+
+        # --- 3. Fetch disk list from PVE ---
+        $diskParams = @{
+            Uri = "$pveUri/api2/json/nodes/$targetNode/disks/list?include-partitions=1"
+            Method = "GET"
+            Headers = $Global:pveHeaders
+            SkipHeaderValidation = $true
+        }
+        if ($skipCert) { $diskParams.Add('SkipCertificateCheck', $true) }
+
+        $diskResp = Invoke-RestMethod @diskParams
+        $allDisks  = @($diskResp.data)
+
+        # Filter to NetApp E-Series only (excludes partition sub-entries that have no model)
+        $eSeriesDisks = @($allDisks | Where-Object { $_.model -eq "NetApp E-Series" })
+
+        $filteredDisks = switch ($filterMode) {
+            'U' { @($eSeriesDisks | Where-Object { [string]::IsNullOrEmpty([string]$_.used) }) }
+            'I' { @($eSeriesDisks | Where-Object { -not [string]::IsNullOrEmpty([string]$_.used) }) }
+            default { $eSeriesDisks }
+        }
+
+        if ($filteredDisks.Count -eq 0) {
+            Write-SpectreHost -Message "[yellow]No E-Series disks match the selected filter on node [white]$targetNode[/].[/]"
+            Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            return
+        }
+
+        # --- 4. Build SANtricity EUI / WWN lookup ---
+        # Key: uppercase hex identifier → volume name
+        $volumeLookup = @{}
+        try {
+            $sanVolumes = @(Get-SANtricityVolume)
+            foreach ($vol in $sanVolumes) {
+                $volName = [string]$vol.name
+                # NVMe: extendedUniqueIdentifier (EUI-128, 32 hex chars)
+                if ($vol.PSObject.Properties['extendedUniqueIdentifier'] -and -not [string]::IsNullOrWhiteSpace([string]$vol.extendedUniqueIdentifier)) {
+                    $key = ([string]$vol.extendedUniqueIdentifier).ToUpper().Trim()
+                    if ($key -and -not $volumeLookup.ContainsKey($key)) { $volumeLookup[$key] = $volName }
+                }
+                # iSCSI / FC: worldWideName (NAA-6, 32 hex chars starting with '6')
+                if ($vol.PSObject.Properties['worldWideName'] -and -not [string]::IsNullOrWhiteSpace([string]$vol.worldWideName)) {
+                    $key = ([string]$vol.worldWideName).ToUpper().Trim()
+                    if ($key -and -not $volumeLookup.ContainsKey($key)) { $volumeLookup[$key] = $volName }
+                }
+            }
+        } catch {
+            Write-SpectreHost -Message "[yellow]SANtricity offline — volume names will not be shown.[/]"
+        }
+
+        # --- 5. Build table rows ---
+        $tableData = foreach ($disk in ($filteredDisks | Sort-Object devpath)) {
+            $wwnRaw    = [string]$disk.wwn
+            $byIdLink  = [string]$disk.by_id_link
+            $devpath   = [string]$disk.devpath
+            $diskType  = [string]$disk.type
+            $usedVal   = [string]$disk.used
+            $sizeBytes = [long]$disk.size
+            $sizeGiB   = [math]::Round($sizeBytes / 1GB, 1)
+
+            # Cross-reference: derive lookup key
+            $lookupKey = $null
+            if ($wwnRaw -match '^eui\.([0-9a-fA-F]+)$') {
+                # NVMe EUI-128
+                $lookupKey = $Matches[1].ToUpper()
+            } elseif ($byIdLink -match 'scsi-3([0-9a-fA-F]{32})') {
+                # iSCSI / FC NAA-6 WWN embedded in by-id path (strip NAA prefix digit 3)
+                $lookupKey = $Matches[1].ToUpper()
+            }
+
+            $volName = if ($lookupKey -and $volumeLookup.ContainsKey($lookupKey)) {
+                $volumeLookup[$lookupKey]
+            } else {
+                '—'
+            }
+
+            # Display-friendly WWN: strip eui. / 0x prefix; truncate long values
+            $wwnDisplay = if ($wwnRaw -match '^eui\.(.+)$') {
+                "eui.$($Matches[1].ToLower())"
+            } elseif ($wwnRaw -match '^0x(.+)$') {
+                "0x$($Matches[1].ToLower())"
+            } else { $wwnRaw }
+
+            [PSCustomObject]@{
+                'Dev Path'         = $devpath
+                'Type'             = $diskType
+                'GiB'              = "$sizeGiB"
+                'Used For'         = if ([string]::IsNullOrEmpty($usedVal)) { '—' } else { $usedVal }
+                'SANtricity Volume' = $volName
+                'WWN / EUI'        = $wwnDisplay
+            }
+        }
+
+        # --- 6. Display ---
+        $filterLabel = switch ($filterMode) {
+            'U' { 'Unused' }
+            'I' { 'In-Use' }
+            default { 'All' }
+        }
+        Write-SpectreHost -Message "[cyan]Node:[/] [white]$targetNode[/]  [cyan]Filter:[/] [white]$filterLabel[/]  [cyan]E-Series disks shown:[/] [white]$($tableData.Count)[/]"
+
+        if (Get-Command -Name Format-SpectreTable -ErrorAction SilentlyContinue) {
+            Format-SpectreTable -Data $tableData
+        } else {
+            $tableData | Format-Table -AutoSize | Out-String | Write-Host
+        }
+
+        Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    } catch {
+        $err = $_.ToString().Replace('[', '(').Replace(']', ')')
+        Write-SpectreHost -Message "[red]Failed to retrieve PVE host disk view: $err[/]"
+        Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     }
 }

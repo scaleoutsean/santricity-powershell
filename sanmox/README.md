@@ -52,6 +52,14 @@ PS /home/sean/code/santricity-powershell> ./sanmox/sanmox.ps1 -Config /home/sean
 
 ## Use
 
+Remember to check relevant columns before making changes. Generally:
+
+- `Usage: LVM` shows a volume is in use (although it may not have anything on it, you should at least remove LVM and VG before deleting this volume from SANtricity).
+- `GPT: Yes` may not mean anything, and I generally don't even use that, but maybe someone else is using this disk.
+- `Usage: No` and `GPT: No` is the safest situation. Although this is view from one host. Another PVE host may have a different view, so as always when working with shared storage, make sure before you act.
+
+![Host view of storage](./images/step_00_pve_storage_view.png)
+
 Create a SANtricity host group for PVE datacenter (cluster) from the UI or other (PowerShell, Python, etc):
 
 ![Create SANtricity host group for PVE datacenter (cluster)](./images/step_01_create_santricity_host_group.png)
@@ -62,7 +70,7 @@ Create a SANtricity volume (example: `sanmox`) in **SANtricity Volumes**:
 
 iSCSI may be able to discover the new target if previous volumes exists (i.e. target portal is known) with `pvesm scan iscsi <HOST[:PORT]>`. But PVE 9.1 can't scan NVMe/RoCE, so this step is left to PVE CLI rather than partially implemented.
 
-Either way, rescan storage from CLI  using `iscsiadm` or `nvme` (client) and add a VG on the new volume. Use `lsblk` to show devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding local LVM.
+Either way, rescan storage from CLI  using `iscsiadm` or `nvme` (client) and add a VG on the new volume. Use `lsblk` to show devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding a local LVM. Also, remember that `lvs` and similar host-level commands do not show PVE cluster-level LVM information that you get from `pvesm status`. CLI commands on the host: `pvcreate <dev-path>`, `vgcreate <vg_name> <dev-path>`.
 
 ![Create VG (`vg_sanmox`)](./images/step_03_create_vg.png)
 

@@ -126,8 +126,59 @@ if (
     }
 }
 
+function Test-SanmoxHostObjectUniqueness {
+    [CmdletBinding()]
+    param()
+
+    if (-not $Global:sanConnected) {
+        return $true
+    }
+
+    try {
+        $hosts = @(Get-SANtricityHost)
+        $hostGroups = @(Get-SANtricityHostGroup)
+    } catch {
+        Write-SpectreHost -Message "[yellow]Could not validate Host/Host Group uniqueness during startup. Continuing.[/]"
+        return $true
+    }
+
+    $hostKeySet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($host in $hosts) {
+        foreach ($candidate in @($host.name, $host.label)) {
+            $name = ([string]$candidate).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($name)) {
+                [void]$hostKeySet.Add($name)
+            }
+        }
+    }
+
+    $collisions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($hostGroup in $hostGroups) {
+        foreach ($candidate in @($hostGroup.name, $hostGroup.label)) {
+            $name = ([string]$candidate).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($name) -and $hostKeySet.Contains($name)) {
+                [void]$collisions.Add($name)
+            }
+        }
+    }
+
+    if ($collisions.Count -gt 0) {
+        $collisionList = @($collisions | Sort-Object) -join ', '
+        Write-SpectreHost -Message "[red]Unsafe SANtricity naming collision detected between Host and Host Group objects.[/]"
+        Write-SpectreHost -Message "[red]Host and host groups must be unique within each storage system.[/]"
+        Write-SpectreHost -Message "[yellow]Conflicting name(s): $collisionList[/]"
+        return $false
+    }
+
+    return $true
+}
+
 # --- Connect ---
 Connect-SanmoxEnvironment
+if (-not (Test-SanmoxHostObjectUniqueness)) {
+    Write-SpectreHost -Message "[red]Startup aborted due to Host/Host Group naming collision. Please rename the conflicting SANtricity objects and retry.[/]"
+    exit 1
+}
 
 $configProfileName = [System.IO.Path]::GetFileName($configFile)
 $configProfileNameSafe = if ($configProfileName) { $configProfileName.Replace('[', '[[').Replace(']', ']]') } else { "sanconfig.json" }
@@ -166,8 +217,9 @@ do {
                 $toolboxChoices = @(
                     "1. [Blue]View[/] SANtricity-backed PVE Datastores and Mappings :eyes:",
                     "2. [Blue]View[/] Configured Host Group/Host Disk Identifiers & Paths :eyes:",
-                    "3. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
-                    "4. [Purple_2]Remove[/] [orange3]PVE[/] datastore (WARNING: Datastore must be empty) :litter_in_bin_sign:",
+                    "3. [Blue]View[/] E-Series Disks from PVE Host Perspective :desktop_computer:",
+                    "4. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
+                    "5. [Purple_2]Remove[/] [orange3]PVE[/] datastore (WARNING: Datastore must be empty) :litter_in_bin_sign:",
                     "B. Back to [Blue]main menu[/] :house:"
                 )
                 $sub = Read-SpectreSelection -Title "Pick a [Blue]tool[/]" -Choices $toolboxChoices -Color Turquoise2 -PageSize 10 -EnableSearch
@@ -175,8 +227,9 @@ do {
                 switch ($sub.Substring(0, 1).ToUpper()) {
                     '1' { Get-SanmoxStorageMap }
                     '2' { Get-SanmoxPveDevicePaths }
-                    '3' { New-SanmoxPveStorage }
-                    '4' { Remove-SanmoxPveStorage }
+                    '3' { Get-SanmoxPveHostDiskView }
+                    '4' { New-SanmoxPveStorage }
+                    '5' { Remove-SanmoxPveStorage }
                     'B' { break }
                 }
             } until ($sub.Substring(0,1).ToUpper() -eq 'B')
