@@ -26,7 +26,7 @@ param(
     [int]$SampleCount,
     [string[]]$Volumes,
     [switch]$NoRawClixml,
-    [bool]$SkipCertificateCheck = $true
+    [switch]$SkipCertificateCheck
 )
 
 Set-StrictMode -Version Latest
