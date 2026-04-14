@@ -27,6 +27,9 @@ $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin
 # For production with controller or CA pinning (legacy pipeline implied when using -TrustedCertificate):
 $conn = Connect-SANtricity -BaseUrl 'https://controller_b:8443' -Username 'admin' -Password 'secret' -TrustedCertificate '/path/to/controller-or-ca-chain.pem' -Verbose
 
+# Get available drives
+Get-SANtricityDrive | Select-Object -Property available,driveMediaType,id,@{Name="Slot"; Expression={$_.physicalLocation.slot}},@{Name="TrayRef"; Expression={$_.physicalLocation.trayRef}} | Sort-Object -Property Slot | Format-Table
+
 # Get volumes
 $vols = Get-SANtricityVolume
 # Get and remove "repo" volumes orphaned by Snapshot (Consistency) Group deletion. Verify before confirming!

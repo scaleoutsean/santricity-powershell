@@ -49,19 +49,35 @@ function New-SANtricityStoragePool {
         [Parameter(Mandatory=$true, ParameterSetName='Auto')]
         [switch]$Auto,
 
-        [Parameter(Mandatory=$true, ParameterSetName='ManualIds')]
+        [Parameter(Mandatory=$false, ParameterSetName='Auto')]
+        [ValidateSet('ssd','hdd')]
+        [string]$MediaType,
+
+        [Parameter(Mandatory=$true, ParameterSetName='ManualIds', ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+        [Alias('id')]
         [string[]]$DiskIds,
 
         [Parameter(Mandatory=$true, ParameterSetName='ManualSlots')]
         [int[]]$DriveSlots
     )
 
-    $selectedDriveIds = @()
-
-    if ($PSCmdlet.ParameterSetName -eq 'ManualIds') {
-        $selectedDriveIds = $DiskIds
+    Begin {
+        $accumulatedDriveIds = @()
     }
-    elseif ($PSCmdlet.ParameterSetName -eq 'ManualSlots') {
+    
+    Process {
+        if ($PSCmdlet.ParameterSetName -eq 'ManualIds' -and $null -ne $DiskIds) {
+            $accumulatedDriveIds += $DiskIds
+        }
+    }
+    
+    End {
+        $selectedDriveIds = @()
+
+        if ($PSCmdlet.ParameterSetName -eq 'ManualIds') {
+            $selectedDriveIds = $accumulatedDriveIds
+        }
+        elseif ($PSCmdlet.ParameterSetName -eq 'ManualSlots') {
         Write-Verbose "Resolving drive slots to IDs..."
         $allDrives = Get-SANtricityDrive
         if (-not $allDrives) { throw "No drives found to resolve slots." }
@@ -105,11 +121,20 @@ function New-SANtricityStoragePool {
             throw "No optimal unassigned drives found."
         }
         
+        if ($MediaType) {
+            Write-Verbose "Filtering drives for media type: $MediaType"
+            $candidates = $candidates | Where-Object { $_.driveMediaType -eq $MediaType }
+            if (-not $candidates) {
+                throw "No optimal unassigned drives of type $MediaType found."
+            }
+        }
+
         # Group by media type to avoid mixing SSD and HDD
         $groups = $candidates | Group-Object -Property driveMediaType
         
         if ($groups.Count -gt 1) {
-            Write-Verbose "Found mixed media types: $($groups | ForEach-Object { $_.Name + '(' + $_.Count + ')' } | Join-String -Separator ', ')"
+            Write-Warning "Found mixed media types available: $($groups | ForEach-Object { $_.Name + '(' + $_.Count + ')' } | Join-String -Separator ', ')."
+            Write-Warning "Automatically selecting the group with the most drives. To override this, use -MediaType."
         }
         
         # Select the group with the most drives
