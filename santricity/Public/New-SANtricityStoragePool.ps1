@@ -170,4 +170,5 @@ function New-SANtricityStoragePool {
     
     $response = Invoke-SANtricityRequest -Method 'POST' -Path '/storage-pools' -Body $body
     return $response
+    }
 }
