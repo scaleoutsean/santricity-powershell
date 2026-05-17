@@ -312,3 +312,38 @@ function Remove-SanmoxPveStorage {
         Write-SpectreHost -Message "[red]Failed to fetch or remove PVE storage: $err[/]"
     }
 }
+
+function Get-SanmoxStorageDiscoveryInfo {
+    [CmdletBinding()]
+    param()
+
+    Write-SpectreHost -Message "[cyan]Gathering SANtricity discovery info...[/]"
+    
+    # 1. Get array serial number
+    $sysInfo = Invoke-SANtricityRequest -Method GET -Path "/"
+    $sn = $sysInfo.chassisSerialNumber.Trim()
+
+    Write-SpectreHost -Message "[green]Chassis Serial Number:[/] $sn"
+
+    # 2. Get iSCSI Interfaces
+    $iscsiInterfaces = Get-SANtricityInterface -Summary -InterfaceType iscsi -ErrorAction SilentlyContinue
+    $portals = $iscsiInterfaces | Where-Object { -not [string]::IsNullOrWhiteSpace($_.IPv4Address) -and $_.IPv4Address -ne '0.0.0.0' } | Select-Object -ExpandProperty IPv4Address | Select-Object -Unique
+
+    if ($portals) {
+        Write-SpectreHost -Message "[green]iSCSI Portals Found:[/] $($portals -join ', ')"
+    } else {
+        Write-SpectreHost -Message "[yellow]No active iSCSI portals found.[/]"
+    }
+
+    # 3. Output NVMe copy-paste helper
+    Write-SpectreHost -Message ""
+    Write-SpectreHost -Message "[darkorange]=== NVMe/RoCE Host-Side Discovery Helper ===[/]"
+    Write-SpectreHost -Message "Run the following on your PVE nodes to find the device paths for this specific storage array:"
+    Write-SpectreHost -Message "[white]nvme list -o json | jq -r '.Devices[] | select(.SerialNumber == `"$sn`") | .DevicePath'[/]"
+    Write-SpectreHost -Message ""
+
+    return [PSCustomObject]@{
+        ChassisSerialNumber = $sn
+        IscsiPortals = $portals
+    }
+}

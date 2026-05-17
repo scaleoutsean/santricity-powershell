@@ -2,14 +2,22 @@
 
 ## What is SANmox
 
-Proxmox VE 9 has a poor storage plug-in approach inspired by my SolidFire TUI, [Firemox](https://github.com/scaleoutsean/firemox). See [this post](https://scaleoutsean.github.io/2026/03/31/proxmox-plugin-netapp-eseries-santricity.html) for more on SANmox and SANtricity LVM plug-in for PVE 9.
+Proxmox VE 9's storage plugin approach isn't very attractive. See [this post](https://scaleoutsean.github.io/2026/03/31/proxmox-plugin-netapp-eseries-santricity.html) for more. As a result, I chose to implement a very basic SANtricity LVM plug-in for PVE 9 *and* implement all functionality in a PowerShell TUI (SANmox).
 
 This TUI has the following advantages:
 
 - Does not require storage credentials on PVE nodes
-- API access to PVE - more robust for minor PVE upgrades and patches
-- API access to SANtricity and easy to extend as underlying SANtricity PowerShell cmdlets are many
-- It can be extended to use SANtricity LVM, my [SANtricity-aware LVM plugin for shared storage](https://scaleoutsean.github.io/2026/03/31/proxmox-plugin-netapp-eseries-santricity.html), without weaker security inherent to full-featured Proxmox VE storage plug-ins
+- Uses API to access PVE - more robust for minor PVE upgrades and patches
+- Uses API access to SANtricity and easy to extend as underlying SANtricity PowerShell cmdlets are many
+- Leverages SANtricity LVM without any risk or complexity
+
+Although the TUI could work with generic PVE LVMPlugin (and the initial release did), going forward it will work with SANtricity LVM Plugin (`santricity_lvm` downloadable from [here](https://github.com/scaleoutsean/santricity-go/tree/master/tools/proxmox_plugin)).
+
+**Requirements:**
+
+- PowerShell 7.6+ on client (any OS that runs PowerShell) with SANmox module
+- PVE 9.1 with `santricity_lvm` plugin on PVE nodes
+- SANtricity 11.9+ with iSCSI (automated) or NVMe/RoCE (semi-automated due to missing NVMe support in PVE 9.1) storage interfaces
 
 ## Installation and configuration
 
@@ -33,12 +41,13 @@ Your (encrypted) credentials will be securely prompted for on first launch and o
 - Linux/macOS: `~/.sanmox_cred.xml` and `~/.sanmox_pve_cred.xml`
 - Windows: `$HOME/.sanmox_cred.xml` and `$HOME/.sanmox_pve_cred.xml` (typically `C:\Users\<username>\`)
 
-Do not leave your passwords inside `sanconfig.json`.
+**Do not leave your password inside `sanconfig.json`!**
 
 If `PveSecret` is present in the config, SANmox will warn at startup and use it only as a fallback when no encrypted PVE credential has been saved yet. Treat this as a temporary migration aid, not the normal operating mode.
 
 ```powershell
-PowerShell 7.6.0
+PowerShell 7.6.1
+PS /home/sean/code/santricity-powershell> Install-Module -Name PwshSpectreConsole
 PS /home/sean/code/santricity-powershell> ./sanmox/sanmox.ps1                                        
 Please enter password for SANtricity user 'admin' (input hidden): ********
 Do you want to save this password securely for future sessions? (Y/n): 
@@ -70,7 +79,7 @@ Create a SANtricity volume (example: `sanmox`) in **SANtricity Volumes**:
 
 iSCSI may be able to discover the new target if previous volumes exists (i.e. target portal is known) with `pvesm scan iscsi <HOST[:PORT]>`. But PVE 9.1 can't scan NVMe/RoCE, so this step is left to PVE CLI rather than partially implemented.
 
-Either way, rescan storage from CLI  using `iscsiadm` or `nvme` (client) and add a VG on the new volume. Use `lsblk` to show devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding a local LVM. Also, remember that `lvs` and similar host-level commands do not show PVE cluster-level LVM information that you get from `pvesm status`. CLI commands on the host: `pvcreate <dev-path>`, `vgcreate <vg_name> <dev-path>`.
+Either way, rescan storage from the CLI  using `iscsiadm` or `nvme` (client) and add a VG on the new volume. Use `lsblk` to show devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding a local LVM. Also, remember that `lvs` and similar host-level commands do not show PVE cluster-level LVM information that you get from `pvesm status`. CLI commands on the host: `pvcreate <dev-path>`, `vgcreate <vg_name> <dev-path>`.
 
 ![Create VG (`vg_sanmox`)](./images/step_03_create_vg.png)
 
@@ -105,11 +114,4 @@ There are some other menu items made to make it possible to avoid using Web brow
   - Delete
   - Report/list LVM/VG/LUNs
 
-## Possible additional features
-
-In terms of non-trivial changes, these seem appealing to me:
-
-- Any SANtricity PowerShell cmdlet you see in this repo can be added
-- When PVE adds NVMeoF support (`pvesm nvmeofscan`?), implement end-to-end provisioning for iSCSI and NVMe/RoCE
-- Possible integration with SANtricity LVM plug-in for tighter integration with Proxmox datacenters/clusters (see the blog post at the top)
 

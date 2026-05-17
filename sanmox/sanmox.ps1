@@ -33,7 +33,7 @@ if (Test-Path -Path $configFile) {
     Write-Host "Configuration file not found at $configFile. Creating a default one." -ForegroundColor Yellow
     $defaultConfig = @{
         SanApiUri = "https://192.168.1.100:8443"
-        SanUser = "rw"
+        SanUser = "storage"
         SanPoolName = "DDP1" # Pin to a primary Storage Pool by default
         SanHostGroupName = @("pve-cluster-1") # Pin to a specific Host Group array
         PveApiUri = "https://192.168.1.194:8006"
@@ -65,7 +65,7 @@ if (Test-Path -Path $santricityModulePath) {
 }
 
 # --- Module Loader ---
-$sanmoxModules = @('SanmoxConnect', 'SanmoxPve', 'SanmoxVolume', 'SanmoxHostGroup', 'SanmoxToolbox', 'SanmoxStoragePool', 'SanmoxTargetOverview')
+$sanmoxModules = @('SanmoxConnect', 'SanmoxUI', 'SanmoxPve', 'SanmoxVolume', 'SanmoxHostGroup', 'SanmoxToolbox', 'SanmoxStoragePool', 'SanmoxTargetOverview')
 foreach ($sanmod in $sanmoxModules) {
     $modulePath = Join-Path -Path $scriptDir -ChildPath "${sanmod}.psm1"
     if (Test-Path -Path $modulePath) {
@@ -284,3 +284,4 @@ do {
         'Q' { Write-SpectreHost -Message "Exiting Sanmox. Have a great day!" }
     }
 } until ($MainMenu -eq 'Q')
+
