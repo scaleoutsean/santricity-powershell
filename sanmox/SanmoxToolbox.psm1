@@ -132,7 +132,7 @@ function Get-SanmoxSystemPerformanceSnapshot {
     Write-SpectreHost -Message "[cyan]Collecting SANtricity system performance snapshot baseline...[/]"
 
     try {
-        $baselinePayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem -Type storageSystem
+        $baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem
         $baselineStats = @(& $extractSystemStats $baselinePayload)
         if ($baselineStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]No system live statistics were returned from SANtricity.[/]"
@@ -142,7 +142,7 @@ function Get-SanmoxSystemPerformanceSnapshot {
         Write-SpectreHost -Message "[cyan]Waiting $requestedWaitSeconds seconds to collect counter deltas (CLI wait). SANtricity performance collection interval may differ.[/]"
         Start-Sleep -Seconds $requestedWaitSeconds
 
-        $finalPayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem
+        $finalPayload = Get-SANtricityLiveStatistics -Type storageSystem
         $finalStats = @(& $extractSystemStats $finalPayload)
         if ($finalStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]Final system live statistics sample was empty.[/]"
@@ -158,8 +158,8 @@ function Get-SanmoxSystemPerformanceSnapshot {
             $intervalSeconds = $requestedWaitSeconds
             if ($item.PSObject.Properties['observedTimeInMS'] -and $previous.PSObject.Properties['observedTimeInMS']) {
                 $curMs = 0L; $prevMs = 0L
-                if ([long]::TryParse([string]$item.observedTimeInMS, [ref]$curMs) -and
-                    [long]::TryParse([string]$previous.observedTimeInMS, [ref]$prevMs)) {
+                if ([double]::TryParse([string]$item.observedTimeInMS, [ref]$curMs) -and
+                    [double]::TryParse([string]$previous.observedTimeInMS, [ref]$prevMs)) {
                     $intervalSeconds = [math]::Max(1, [math]::Round(($curMs - $prevMs) / 1000, 0))
                 }
             }
@@ -169,8 +169,8 @@ function Get-SanmoxSystemPerformanceSnapshot {
             foreach ($prop in $liveProps) {
                 $cur = 0L; $prev = 0L
                 if ($item.PSObject.Properties[$prop] -and $previous.PSObject.Properties[$prop] -and
-                    [long]::TryParse([string]$item.$prop, [ref]$cur) -and
-                    [long]::TryParse([string]$previous.$prop, [ref]$prev)) {
+                    [double]::TryParse([string]$item.$prop, [ref]$cur) -and
+                    [double]::TryParse([string]$previous.$prop, [ref]$prev)) {
                     $d[$prop] = $cur - $prev
                 } else {
                     $d[$prop] = 0L
@@ -273,7 +273,7 @@ function Get-SanmoxStoragePerformanceAdvisor {
     Write-SpectreHost -Message "[cyan]Collecting SANtricity baseline for Storage Performance Advisor...[/]"
 
     try {
-        $baselinePayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem
+        $baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem
         $baselineStats = @(& $extractSystemStats $baselinePayload)
         if ($baselineStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]No system live statistics were returned from SANtricity.[/]"
@@ -283,7 +283,7 @@ function Get-SanmoxStoragePerformanceAdvisor {
         Write-SpectreHost -Message "[cyan]Waiting $requestedWaitSeconds seconds (CLI wait). SANtricity observed interval may differ.[/]"
         Start-Sleep -Seconds $requestedWaitSeconds
 
-        $finalPayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem
+        $finalPayload = Get-SANtricityLiveStatistics -Type storageSystem
         $finalStats = @(& $extractSystemStats $finalPayload)
         if ($finalStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]Final system live statistics sample was empty.[/]"
@@ -299,8 +299,8 @@ function Get-SanmoxStoragePerformanceAdvisor {
             $intervalSeconds = $requestedWaitSeconds
             if ($item.PSObject.Properties['observedTimeInMS'] -and $previous.PSObject.Properties['observedTimeInMS']) {
                 $curMs = 0L; $prevMs = 0L
-                if ([long]::TryParse([string]$item.observedTimeInMS, [ref]$curMs) -and
-                    [long]::TryParse([string]$previous.observedTimeInMS, [ref]$prevMs)) {
+                if ([double]::TryParse([string]$item.observedTimeInMS, [ref]$curMs) -and
+                    [double]::TryParse([string]$previous.observedTimeInMS, [ref]$prevMs)) {
                     $intervalSeconds = [math]::Max(1, [math]::Round(($curMs - $prevMs) / 1000, 0))
                 }
             }
@@ -309,8 +309,8 @@ function Get-SanmoxStoragePerformanceAdvisor {
             foreach ($prop in $liveProps) {
                 $cur = 0L; $prev = 0L
                 if ($item.PSObject.Properties[$prop] -and $previous.PSObject.Properties[$prop] -and
-                    [long]::TryParse([string]$item.$prop, [ref]$cur) -and
-                    [long]::TryParse([string]$previous.$prop, [ref]$prev)) {
+                    [double]::TryParse([string]$item.$prop, [ref]$cur) -and
+                    [double]::TryParse([string]$previous.$prop, [ref]$prev)) {
                     $d[$prop] = $cur - $prev
                 } else {
                     $d[$prop] = 0L
@@ -1014,3 +1014,4 @@ function Get-SanmoxPveHostDiskView {
         $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     }
 }
+
