@@ -54,9 +54,41 @@ if (-not [string]::IsNullOrWhiteSpace($Config)) {
 }
 
 # --- Interactive Setup & Loading ---
-if (Test-Path -Path $configFile) {
-    $Global:sanConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
-} else {
+function Initialize-Sanconfig {
+    if (Test-Path -Path $configFile) {
+        try {
+            $Global:sanConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
+            
+            # Validation
+            $isValid = $true
+            if ([string]::IsNullOrWhiteSpace($Global:sanConfig.SanApiUri) -or $Global:sanConfig.SanApiUri -notmatch "^https?://") { $isValid = $false }
+            if ($null -ne $Global:sanConfig.PveApiUri -and $Global:sanConfig.PveApiUri -notmatch "^https?://") { $isValid = $false }
+            
+            if (-not $isValid) {
+                Write-SpectreHost -Message "[red]Loaded configuration at $configFile appears invalid (e.g. malformed URIs).[/]"
+                $fix = Read-SpectreSelection -Title "Reset configuration and run setup wizard?" -Choices @("Y. Yes", "N. No, exit")
+                if ($fix -match "^Y") {
+                    Remove-Item $configFile -Force
+                    Initialize-Sanconfig
+                    return
+                } else {
+                    exit 1
+                }
+            }
+            return
+        } catch {
+            Write-SpectreHost -Message "[red]Failed to parse $configFile. It may be corrupt.[/]"
+            $fix = Read-SpectreSelection -Title "Delete configuration and run setup wizard?" -Choices @("Y. Yes", "N. No, exit")
+            if ($fix -match "^Y") {
+                Remove-Item $configFile -Force
+                Initialize-Sanconfig
+                return
+            } else {
+                exit 1
+            }
+        }
+    }
+
     Write-SpectreHost -Message ""
     Write-SpectreHost -Message "[yellow]Configuration file not found at $configFile.[/]"
     Write-SpectreHost -Message "[yellow]Let's do a quick initial setup![/]"
@@ -90,6 +122,8 @@ if (Test-Path -Path $configFile) {
     Write-SpectreHost -Message "[green]Config saved to $configFile[/]"
     Write-SpectreHost -Message ""
 }
+
+Initialize-Sanconfig
 
 $hasPlaintextPveSecret = -not [string]::IsNullOrWhiteSpace([string]$Global:sanConfig.PveSecret)
 
