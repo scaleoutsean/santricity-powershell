@@ -14,7 +14,7 @@ param(
     [switch]$ResetCredentials
 )
 
-# --- Configuration Loading ---
+# --- Configuration Paths ---
 $scriptDir = if ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path } else { Get-Location }
 $defaultConfigFile = Join-Path -Path $scriptDir -ChildPath "sanconfig.json"
 $configFile = if ([string]::IsNullOrWhiteSpace($Config)) {
@@ -25,40 +25,11 @@ $configFile = if ([string]::IsNullOrWhiteSpace($Config)) {
 $credFile = Join-Path -Path $HOME -ChildPath ".sanmox_cred.xml"
 $pveCredFile = Join-Path -Path $HOME -ChildPath ".sanmox_pve_cred.xml"
 
-if ($ResetCredentials) {
-    Write-Host "ResetCredentials switch provided. Removing saved credential files..." -ForegroundColor Cyan
-    if (Test-Path -Path $credFile) { Remove-Item -Path $credFile -Force; Write-Host "Deleted $credFile" }
-    if (Test-Path -Path $pveCredFile) { Remove-Item -Path $pveCredFile -Force; Write-Host "Deleted $pveCredFile" }
-}
-
-if (-not [string]::IsNullOrWhiteSpace($Config)) {
-    Write-Host "Using config file: $configFile" -ForegroundColor Cyan
-}
-
-if (Test-Path -Path $configFile) {
-    $Global:sanConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
-} else {
-    Write-Host "Configuration file not found at $configFile. Creating a default one." -ForegroundColor Yellow
-    $defaultConfig = @{
-        SanApiUri = "https://192.168.1.100:8443"
-        SanUser = "storage"
-        SanPoolName = "DDP1" # Pin to a primary Storage Pool by default
-        SanHostGroupName = @("pve-cluster-1") # Pin to a specific Host Group array
-        PveApiUri = "https://192.168.1.194:8006"
-        PveUser = "root@pam"
-    }
-    $Global:sanConfig = $defaultConfig | ConvertTo-Json
-    $Global:sanConfig | Set-Content -Path $configFile
-    $Global:sanConfig = $defaultConfig
-}
-
-$hasPlaintextPveSecret = -not [string]::IsNullOrWhiteSpace([string]$Global:sanConfig.PveSecret)
-
 # --- Spectre/Dependencies Setup ---
 $modules = @('PwshSpectreConsole')
 foreach ($module in $modules) {
     if (-not (Get-Module -ListAvailable -Name $module)) {
-        Write-Host "Module $module is not installed. You may need to run: Install-Module -Name $module" -ForegroundColor Red
+        Write-Host "Module $module is not installed. Run: Install-Module -Name $module" -ForegroundColor Red
         continue
     }
     Import-Module -Name $module -ErrorAction Stop
@@ -71,6 +42,56 @@ if (Test-Path -Path $santricityModulePath) {
 } else {
     Write-Host "SANtricity module not found at: $santricityModulePath" -ForegroundColor Yellow
 }
+
+if ($ResetCredentials) {
+    Write-SpectreHost -Message "[cyan]ResetCredentials switch provided. Removing saved credential files...[/]"
+    if (Test-Path -Path $credFile) { Remove-Item -Path $credFile -Force; Write-SpectreHost -Message "Deleted $credFile" }
+    if (Test-Path -Path $pveCredFile) { Remove-Item -Path $pveCredFile -Force; Write-SpectreHost -Message "Deleted $pveCredFile" }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Config)) {
+    Write-SpectreHost -Message "[cyan]Using config file: $configFile[/]"
+}
+
+# --- Interactive Setup & Loading ---
+if (Test-Path -Path $configFile) {
+    $Global:sanConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
+} else {
+    Write-SpectreHost -Message ""
+    Write-SpectreHost -Message "[yellow]Configuration file not found at $configFile.[/]"
+    Write-SpectreHost -Message "[yellow]Let's do a quick initial setup![/]"
+    Write-SpectreHost -Message ""
+    
+    $sanUri = Read-Host "Enter SANtricity API URI (e.g. https://controller:8443)"
+    $sanUser = Read-Host "Enter SANtricity Username [storage]"
+    if ([string]::IsNullOrWhiteSpace($sanUser)) { $sanUser = "storage" }
+    
+    $sanPool = Read-Host "Enter Default SANtricity Pool Name (e.g. DDP1)"
+    $sanHostGroup = Read-Host "Enter SANtricity Host Group for PVE (e.g. pve-cluster-1)"
+    
+    $pveUri = Read-Host "Enter Proxmox VE API URI (e.g. https://pve:8006)"
+    $pveUser = Read-Host "Enter Proxmox VE Username or Token ID (e.g. root@pam!token)"
+    
+    $skipCertStr = Read-Host "Skip Certificate Verification? (Y/n) [Y]"
+    $skipCert = if ($skipCertStr -match '^[Nn]') { $false } else { $true }
+
+    $defaultConfig = @{
+        SanApiUri = $sanUri
+        SanUser = $sanUser
+        SanPoolName = $sanPool
+        SanHostGroupName = @($sanHostGroup) # Store as array!
+        PveApiUri = $pveUri
+        PveUser = $pveUser
+        SkipCertificateCheck = $skipCert
+    }
+    
+    $Global:sanConfig = $defaultConfig
+    $Global:sanConfig | ConvertTo-Json -Depth 5 | Set-Content -Path $configFile
+    Write-SpectreHost -Message "[green]Config saved to $configFile[/]"
+    Write-SpectreHost -Message ""
+}
+
+$hasPlaintextPveSecret = -not [string]::IsNullOrWhiteSpace([string]$Global:sanConfig.PveSecret)
 
 # --- Module Loader ---
 $sanmoxModules = @('SanmoxConnect', 'SanmoxUI', 'SanmoxPve', 'SanmoxVolume', 'SanmoxHostGroup', 'SanmoxToolbox', 'SanmoxStoragePool', 'SanmoxTargetOverview')
