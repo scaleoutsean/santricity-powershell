@@ -14,7 +14,7 @@ function Get-SANtricityLiveStatistics {
     the true elapsed interval, then normalize counters by that measured interval.
 
     .PARAMETER Type
-    Optional statistics type. Allowed values: drive, controller, volume.
+    Optional statistics type. Allowed values: drive, controller, volume, storageSystem.
     Omit to receive the full aggregate response (includes systemStats, interfaceStats).
     Note: 'system' and 'interface' are not valid -Type arguments — access those fields
     from the aggregate response instead.
@@ -41,7 +41,7 @@ function Get-SANtricityLiveStatistics {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [ValidateSet('drive', 'controller', 'volume')]
+        [ValidateSet('drive', 'controller', 'volume', 'storageSystem')]
         [string]$Type
     )
 
@@ -49,7 +49,11 @@ function Get-SANtricityLiveStatistics {
         if ([string]::IsNullOrWhiteSpace($Type)) {
             return Invoke-SANtricityRequest -Method 'GET' -Path '/live-statistics'
         }
-        $normalizedType = $Type.ToLowerInvariant()
-        return Invoke-SANtricityRequest -Method 'GET' -Path "/live-statistics?type=$normalizedType"
+        
+        # Keep casing intact for types like storageSystem
+        $pathType = $Type
+        if ($Type -eq 'storagesystem') { $pathType = 'storageSystem' }
+
+        return Invoke-SANtricityRequest -Method 'GET' -Path "/live-statistics?type=$pathType"
     }
 }

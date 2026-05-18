@@ -132,7 +132,7 @@ function Get-SanmoxSystemPerformanceSnapshot {
     Write-SpectreHost -Message "[cyan]Collecting SANtricity system performance snapshot baseline...[/]"
 
     try {
-        $baselinePayload = Get-SANtricityLiveStatistics   # no -Type: aggregate response includes systemStats
+        $baselinePayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem -Type storageSystem
         $baselineStats = @(& $extractSystemStats $baselinePayload)
         if ($baselineStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]No system live statistics were returned from SANtricity.[/]"
@@ -142,7 +142,7 @@ function Get-SanmoxSystemPerformanceSnapshot {
         Write-SpectreHost -Message "[cyan]Waiting $requestedWaitSeconds seconds to collect counter deltas (CLI wait). SANtricity performance collection interval may differ.[/]"
         Start-Sleep -Seconds $requestedWaitSeconds
 
-        $finalPayload = Get-SANtricityLiveStatistics
+        $finalPayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem
         $finalStats = @(& $extractSystemStats $finalPayload)
         if ($finalStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]Final system live statistics sample was empty.[/]"
@@ -273,7 +273,7 @@ function Get-SanmoxStoragePerformanceAdvisor {
     Write-SpectreHost -Message "[cyan]Collecting SANtricity baseline for Storage Performance Advisor...[/]"
 
     try {
-        $baselinePayload = Get-SANtricityLiveStatistics
+        $baselinePayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem
         $baselineStats = @(& $extractSystemStats $baselinePayload)
         if ($baselineStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]No system live statistics were returned from SANtricity.[/]"
@@ -283,7 +283,7 @@ function Get-SanmoxStoragePerformanceAdvisor {
         Write-SpectreHost -Message "[cyan]Waiting $requestedWaitSeconds seconds (CLI wait). SANtricity observed interval may differ.[/]"
         Start-Sleep -Seconds $requestedWaitSeconds
 
-        $finalPayload = Get-SANtricityLiveStatistics
+        $finalPayload$finalPayload$baselinePayload = Get-SANtricityLiveStatistics -Type storageSystem -Type storageSystem
         $finalStats = @(& $extractSystemStats $finalPayload)
         if ($finalStats.Count -eq 0) {
             Write-SpectreHost -Message "[yellow]Final system live statistics sample was empty.[/]"
