@@ -47,6 +47,8 @@ if ($ResetCredentials) {
     Write-SpectreHost -Message "[cyan]ResetCredentials switch provided. Removing saved credential files...[/]"
     if (Test-Path -Path $credFile) { Remove-Item -Path $credFile -Force; Write-SpectreHost -Message "Deleted $credFile" }
     if (Test-Path -Path $pveCredFile) { Remove-Item -Path $pveCredFile -Force; Write-SpectreHost -Message "Deleted $pveCredFile" }
+    $Global:sanPass = $null
+    $Global:pvePass = $null
 }
 
 if (-not [string]::IsNullOrWhiteSpace($Config)) {
