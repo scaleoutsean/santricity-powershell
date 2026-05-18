@@ -38,7 +38,7 @@ SANmox is **not** meant to be installed on PVE nodes. It is meant to be installe
 
 Your (encrypted) credentials will be securely prompted for on first launch and optionally stored in:
 
-- Linux/macOS: `~/.sanmox_cred.xml` and `~/.sanmox_pve_cred.xml`
+- Linux/macOS: `~/.sanmox_cred.xml` (SANtricity) and `~/.sanmox_pve_cred.xml` (PVE)
 - Windows: `$HOME/.sanmox_cred.xml` and `$HOME/.sanmox_pve_cred.xml` (typically `C:\Users\<username>\`)
 
 **Do not leave your password inside `sanconfig.json`!**
@@ -58,6 +58,8 @@ Do you want to save this PVE password securely for future sessions? (Y/n):
 # Alternate profile/config example
 PS /home/sean/code/santricity-powershell> ./sanmox/sanmox.ps1 -Config /home/sean/configs/sanconfig.cluster-b.json
 ```
+
+To reset credentials and get prompted to enter them again: `sanmox -resetCredentials`.
 
 ## Use
 

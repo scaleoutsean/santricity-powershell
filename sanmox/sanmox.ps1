@@ -9,7 +9,9 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [string]$Config
+    [string]$Config,
+
+    [switch]$ResetCredentials
 )
 
 # --- Configuration Loading ---
@@ -22,6 +24,12 @@ $configFile = if ([string]::IsNullOrWhiteSpace($Config)) {
 }
 $credFile = Join-Path -Path $HOME -ChildPath ".sanmox_cred.xml"
 $pveCredFile = Join-Path -Path $HOME -ChildPath ".sanmox_pve_cred.xml"
+
+if ($ResetCredentials) {
+    Write-Host "ResetCredentials switch provided. Removing saved credential files..." -ForegroundColor Cyan
+    if (Test-Path -Path $credFile) { Remove-Item -Path $credFile -Force; Write-Host "Deleted $credFile" }
+    if (Test-Path -Path $pveCredFile) { Remove-Item -Path $pveCredFile -Force; Write-Host "Deleted $pveCredFile" }
+}
 
 if (-not [string]::IsNullOrWhiteSpace($Config)) {
     Write-Host "Using config file: $configFile" -ForegroundColor Cyan
