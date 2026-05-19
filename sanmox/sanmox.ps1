@@ -11,7 +11,8 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$Config,
 
-    [switch]$ResetCredentials
+    [switch]$ResetCredentials,
+    [switch]$SkipCertificateCheck
 )
 
 # --- Configuration Paths ---
@@ -126,6 +127,10 @@ function Initialize-Sanconfig {
 }
 
 Initialize-Sanconfig
+
+if ($PSBoundParameters.ContainsKey('SkipCertificateCheck') -and $SkipCertificateCheck) {
+    $Global:sanConfig.SkipCertificateCheck = $true
+}
 
 $hasPlaintextPveSecret = -not [string]::IsNullOrWhiteSpace([string]$Global:sanConfig.PveSecret)
 
