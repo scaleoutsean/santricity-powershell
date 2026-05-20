@@ -285,21 +285,23 @@ do {
             do {
                 Write-SpectreRule -Title "SANtricity-Proxmox Toolbox :toolbox: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Yellow
                 $toolboxChoices = @(
-                    "1. [Blue]View[/] SANtricity-backed PVE Datastores and Mappings :eyes:",
-                    "2. [Blue]View[/] Configured Host Group/Host Disk Identifiers & Paths :eyes:",
-                    "3. [Blue]View[/] E-Series Disks from PVE Host Perspective :desktop_computer:",
-                    "4. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
-                    "5. [Purple_2]Remove[/] [orange3]PVE[/] datastore (WARNING: Datastore must be empty) :litter_in_bin_sign:",
+                    "1. [Blue]View[/] SANtricity LVM Datastores (santricity_lvm) ONLY :eyes:",
+                    "2. [Blue]View[/] SANtricity-backed PVE Datastores and Mappings :eyes:",
+                    "3. [Blue]View[/] Configured Host Group/Host Disk Identifiers & Paths :eyes:",
+                    "4. [Blue]View[/] E-Series Disks from PVE Host Perspective :desktop_computer:",
+                    "5. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
+                    "6. [Purple_2]Remove[/] [orange3]PVE[/] datastore (WARNING: Datastore must be empty) :litter_in_bin_sign:",
                     "B. Back to [Blue]main menu[/] :house:"
                 )
                 $sub = Read-SpectreSelection -Title "Pick a [Blue]tool[/]" -Choices $toolboxChoices -Color Turquoise2 -PageSize 10 -EnableSearch
                 
                 switch ($sub.Substring(0, 1).ToUpper()) {
-                    '1' { Get-SanmoxStorageMap }
-                    '2' { Get-SanmoxPveDevicePaths }
-                    '3' { Get-SanmoxPveHostDiskView }
-                    '4' { New-SanmoxPveStorage }
-                    '5' { Remove-SanmoxPveStorage }
+                    '1' { Get-SanmoxPveSantricityLvmDatastores }
+                    '2' { Get-SanmoxStorageMap }
+                    '3' { Get-SanmoxPveDevicePaths }
+                    '4' { Get-SanmoxPveHostDiskView }
+                    '5' { New-SanmoxPveStorage }
+                    '6' { Remove-SanmoxPveStorage }
                     'B' { break }
                 }
             } until ($sub.Substring(0,1).ToUpper() -eq 'B')

@@ -149,111 +149,110 @@ function New-SanmoxPveStorage {
         }
     } else {
         Write-SpectreHost -Message ""
-        Write-SpectreHost -Message "[darkorange]NOTICE: Proxmox VE API does not currently support `pvesm scan nvmeroce`.[/]"
-        Write-SpectreHost -Message "[darkorange]Please SSH into the target PVE node(s) and run `nvme discover` / `nvme connect` manually.[/]"
-        Write-SpectreHost -Message ""
-        
-        $pause = Read-SpectreSelection -Title "Have you completed the manual NVMe-RoCE scan on the hosts?" -Choices @("Y. Yes, continue to add datastore", "N. No, abort for now")
-        if ($pause -match "^Y") {
-            Write-SpectreHost -Message "[cyan]Configuring NVMe-backed Datastore on PVE Datacenter...[/]"
-            
-            $vgName = Read-Host "Enter the exact Volume Group (VG) name you created on the SANtricity disk (e.g. vg_sanmox03)"
-            if ([string]::IsNullOrWhiteSpace($vgName)) {
-                $vgName = "vg_sanmox_nvme"
+        Write-SpectreHost -Message "[cyan]Gathering NVMe interface data from SANtricity...[/]"
+        try {
+            $interfaces = Invoke-SANtricityRequest -Method GET -Path "/interfaces?channelType=hostside"
+            $nvmeInterfaces = $interfaces | Where-Object { 
+                ($_.interfaceType -match "nvme") -and 
+                ($_.linkState -eq "up") -and 
+                (-not [string]::IsNullOrWhiteSpace($_.ipv4Address)) -and 
+                ($_.ipv4Address -ne '0.0.0.0')
             }
-            
-            # Derive the datastore name gracefully 
-            $storageName = if ($vgName -match "^vg_(.*)") { "lvm_$($matches[1])" } else { "lvm_$vgName" }
-            
-            Write-SpectreHost -Message "[cyan]Verifying if VG '$vgName' is visible to PVE...[/]"
-            $vgExists = $false
-            try {
-                $scanNode = $pveNodes[0]
-                $vgCheckParams = @{
-                    Uri = "$pveUri/api2/json/nodes/$scanNode/scan/lvm"
-                    Method = "GET"
-                    Headers = $Global:pveHeaders
-                    SkipHeaderValidation = $true
-                }
-                if ($skipCert) { $vgCheckParams.Add('SkipCertificateCheck', $true) }
-                $vgRes = Invoke-RestMethod @vgCheckParams -ErrorAction Stop
-                
-                if ($vgRes.data.vg -contains $vgName) {
-                    $vgExists = $true
-                    Write-SpectreHost -Message "[green]Successfully located Volume Group '$vgName'![/]"
-                } else {
-                    Write-SpectreHost -Message "[yellow]Warning: Could not strictly verify VG '$vgName' via API. Ensure it is mapped correctly![/]"
-                }
-            } catch {
-                Write-SpectreHost -Message "[yellow]Failed to query LVM subsystem. Proceeding with caution...[/]"
+            $nvmePortals = $nvmeInterfaces | Select-Object -ExpandProperty ipv4Address | Select-Object -Unique
+
+            if (-not $nvmePortals) {
+                Write-SpectreHost -Message "[red]No active NVMe IPv4 host portals found on the SANtricity array.[/]"
+                return
             }
 
-            Write-SpectreHost -Message "[cyan]Verifying if datastore '$storageName' already exists...[/]"
-            $exists = $false
-            try {
-                $checkParams = @{
-                    Uri = "$pveUri/api2/json/storage/$storageName"
-                    Method = "GET"
-                    Headers = $Global:pveHeaders
-                    SkipHeaderValidation = $true
-                }
-                if ($skipCert) { $checkParams.Add('SkipCertificateCheck', $true) }
-                Invoke-RestMethod @checkParams -ErrorAction Stop | Out-Null
-                $exists = $true
-                Write-SpectreHost -Message "[yellow]Datastore '$storageName' already exists. Skipping creation.[/]"
-            } catch {
-                # 404 or related failure means it doesn't exist yet, we can proceed
-            }
+            Write-SpectreHost -Message "[green]Connecting NVMe on all selected PVE hosts persistently (-p)...[/]"
             
-            if (-not $exists) {
-                Write-SpectreHost -Message "[cyan]Creating Datastore '$storageName' backed by Volume Group '$vgName'...[/]"
-                $storageParams = @{
-                    Uri = "$pveUri/api2/json/storage"
-                    Method = "POST"
-                    Headers = $Global:pveHeaders
-                    SkipHeaderValidation = $true
-                    Body = @{
-                        storage = $storageName
-                        type = "lvm"
-                        vgname = $vgName
-                        shared = 1
-                        content = "images,rootdir"
-                        saferemove = 1
-                        'snapshot-as-volume-chain' = 1
-                    }
-                }
-                if ($restrictNodes) {
-                    $storageParams.Body.nodes = $restrictNodes
-                }
-                if ($skipCert) { $storageParams.Add('SkipCertificateCheck', $true) }
-                
-                try {
-                    Invoke-RestMethod @storageParams | Out-Null
-                    
-                    # Read back status
-                    $verifyConfig = @{
-                        Uri = "$pveUri/api2/json/storage/$storageName"
-                        Method = "GET"
-                        Headers = $Global:pveHeaders
-                        SkipHeaderValidation = $true
-                    }
-                    if ($skipCert) { $verifyConfig.Add('SkipCertificateCheck', $true) }
-                    
+            # Use $pveNodes array directly as user context is in $selectedNodes
+            $targetNodes = if ($restrictNodes) { $restrictNodes -split "," } else { $pveNodes }
+            
+            foreach ($node in $targetNodes) {
+                Write-SpectreHost -Message "  -> Connecting node: $node"
+                foreach ($portal in $nvmePortals) {
                     try {
-                        Invoke-RestMethod @verifyConfig -ErrorAction Stop | Out-Null
-                        Write-SpectreHost -Message "[green]PVE LVM Datastore '$storageName' successfully created and linked to VG '$vgName'![/]"
+                        Invoke-SanmoxPveSsh -NodeAddress $node -Command "nvme connect-all -t rdma -a $portal -p" | Out-Null
                     } catch {
-                        Write-SpectreHost -Message "[yellow]API POST succeeded, but datastore validation failed. Check PVE directly.[/]"
+                        Write-SpectreHost -Message "[yellow]Warning: SSH command failed on $node for portal $portal. Check node connection.[/]"
                     }
-                } catch {
-                    $err = $_.ToString().Replace('[', '(').Replace(']', ')')
-                    Write-SpectreHost -Message "[red]Failed to create PVE LVM Datastore: $err[/]"
-                    return
                 }
             }
-        } else {
-            Write-SpectreHost -Message "[red]Aborted PVE datastore configuration.[/]"
+
+            Write-SpectreHost -Message "[cyan]Sleeping 3 seconds for udev device propagation...[/]"
+            Start-Sleep -Seconds 3
+
+        } catch {
+            Write-SpectreHost -Message "[red]Failed to connect NVMe array across ssh fabric: $_[/]"
             return
+        }
+
+        # Need the volume name to find the EUI
+        if (-not $VolumeName) {
+            $VolumeName = Read-Host "Enter the exact SANtricity Volume name you mapped to this datastore"
+        }
+        
+        $primaryNode = if ($restrictNodes) { ($restrictNodes -split ",")[0] } else { $pveNodes[0] }
+        Write-SpectreHost -Message "[cyan]Locating block device for volume '$VolumeName' on node $primaryNode...[/]"
+        
+        $hintData = Get-SanmoxPveCliHintData -VolumeName $VolumeName
+        $devicePath = $hintData.EuiPath
+        
+        if (-not $devicePath) {
+            Write-SpectreHost -Message "[red]Could not determine NVMe block device path dynamically for $VolumeName.[/]"
+            return
+        }
+
+        Write-SpectreHost -Message "Located device path: $devicePath"
+        $vgName = Read-Host "Enter the VG Name to create [Default: vg_$VolumeName]"
+        if ([string]::IsNullOrWhiteSpace($vgName)) {
+            $vgName = "vg_$VolumeName"
+        }
+
+        # PV/VG Creation via SSH
+        Write-SpectreHost -Message "[cyan]Creating Physical Volume & Volume Group ($vgName) on node $primaryNode...[/]"
+        try {
+            Invoke-SanmoxPveSsh -NodeAddress $primaryNode -Command "pvcreate -y -ff $devicePath" | Out-Null
+            Invoke-SanmoxPveSsh -NodeAddress $primaryNode -Command "vgcreate $vgName $devicePath" | Out-Null
+            Write-SpectreHost -Message "[green]LVM VG initialized successfully![/]"
+        } catch {
+            Write-SpectreHost -Message "[red]Failed to run pvcreate/vgcreate: $_[/]"
+            Write-SpectreHost -Message "[yellow]If it already exists, you can safely continue. Otherwise abort datastore creation.[/]"
+        }
+
+        $lvmName = Read-Host "Enter the Datastore Name [Default: lvm_$VolumeName]"
+        if ([string]::IsNullOrWhiteSpace($lvmName)) {
+            $lvmName = "lvm_$VolumeName"
+        }
+
+        Write-SpectreHost -Message "[cyan]Registering 'santricity_lvm' storage ($lvmName) in Proxmox Datacenter...[/]"
+        $addDsParams = @{
+            Uri = "$pveUri/api2/json/storage"
+            Method = "POST"
+            Headers = $Global:pveHeaders
+            SkipHeaderValidation = $true
+            Body = @{
+                storage = $lvmName
+                type = "santricity_lvm"
+                vgname = $vgName
+                'array_serial' = (Invoke-SANtricityRequest -Method GET -Path "/").chassisSerialNumber.Trim()
+                shared = 1
+                saferemove = 1
+                'snapshot-as-volume-chain' = 1
+                content = "images,rootdir"
+            }
+        }
+        if ($restrictNodes) { $addDsParams.Body.nodes = $restrictNodes }
+        if ($skipCert) { $addDsParams.Add('SkipCertificateCheck', $true) }
+        
+        try {
+            Invoke-RestMethod @addDsParams | Out-Null
+            Write-SpectreHost -Message "[green]NVMe Datastore '$lvmName' successfully registered in PVE![/]"
+        } catch {
+            $err = $_.ToString().Replace('[', '(').Replace(']', ')')
+            Write-SpectreHost -Message "[red]Failed to add Datastore API entry: $err[/]"
         }
     }
 
@@ -315,6 +314,45 @@ function Remove-SanmoxPveStorage {
         
         $confirm = Read-SpectreSelection -Title "DESTRUCTIVE ACTION: Are you absolutely sure you want to remove PVE storage '$selectedStorage'?" -Choices @("N. No, cancel", "Y. Yes, remove the storage")
         if ($confirm -match '^Y') {
+            Write-SpectreHost -Message "[cyan]Preparing to remove storage... fetching volume group details...[/]"
+            try {
+                $getParams = @{
+                    Uri = "$pveUri/api2/json/storage/$selectedStorage"
+                    Method = "GET"
+                    Headers = $Global:pveHeaders
+                    SkipHeaderValidation = $true
+                }
+                if ($skipCert) { $getParams.Add('SkipCertificateCheck', $true) }
+                $storageDetails = Invoke-RestMethod @getParams
+                $vgName = $storageDetails.data.vgname
+                $storageType = $storageDetails.data.type
+                
+                if ($vgName -and ($storageType -eq 'lvm' -or $storageType -eq 'santricity_lvm')) {
+                    $primaryNode = $Global:pveNodes[0]
+                    Write-SpectreHost -Message "[cyan]Fetching underlying physical devices for VG '$vgName' on node $primaryNode...[/]"
+                    
+                    $pvList = Invoke-SanmoxPveSsh -NodeAddress $primaryNode -Command "vgs $vgName -o pv_name --noheadings" -ErrorAction SilentlyContinue
+                    
+                    if ($pvList) {
+                        $devices = $pvList -split "`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() }
+                        
+                        Write-SpectreHost -Message "[cyan]Removing VG '$vgName' via SSH...[/]"
+                        Invoke-SanmoxPveSsh -NodeAddress $primaryNode -Command "vgremove -y $vgName" | Out-Null
+                        
+                        foreach ($dev in $devices) {
+                            Write-SpectreHost -Message "[cyan]Removing PV on '$dev' via SSH...[/]"
+                            Invoke-SanmoxPveSsh -NodeAddress $primaryNode -Command "pvremove -y $dev" | Out-Null
+                        }
+                        Write-SpectreHost -Message "[green]Successfully cleaned up VG and PV![/]"
+                    } else {
+                        Write-SpectreHost -Message "[yellow]Warning: Could not determine physical volumes for $vgName, or VG not found.[/]"
+                    }
+                }
+            } catch {
+                Write-SpectreHost -Message "[yellow]Warning: Failed to fetch storage info or perform LVM cleanup over SSH. Datastore removal will continue...[/]"
+            }
+
+            Write-SpectreHost -Message "[cyan]Removing Datastore '$selectedStorage' from PVE via API...[/]"
             $deleteParams = @{
                 Uri = "$pveUri/api2/json/storage/$selectedStorage"
                 Method = "DELETE"
@@ -367,4 +405,83 @@ function Get-SanmoxStorageDiscoveryInfo {
         ChassisSerialNumber = $sn
         IscsiPortals = $portals
     }
+}
+
+function Get-SanmoxPveSantricityLvmDatastores {
+    [CmdletBinding()]
+    param()
+
+    Write-SpectreRule -Title "SANtricity LVM Datastores (santricity_lvm) :eyes: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Cyan
+
+    if (-not $Global:pveConnected) {
+        Write-SpectreHost -Message "[red]Proxmox VE is not connected. Connect first or exit restricted mode.[/]"
+        Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        return
+    }
+
+    $skipCert = if ($null -ne $Global:sanConfig.SkipCertificateCheck) { [bool]$Global:sanConfig.SkipCertificateCheck } else { $false }
+    $pveUri = $Global:sanConfig.PveApiUri.TrimEnd('/')
+    $apiParams = @{
+        Uri = "$pveUri/api2/json/storage"
+        Method = "GET"
+        Headers = $Global:pveHeaders
+        SkipHeaderValidation = $true
+    }
+    if ($skipCert) { $apiParams.Add('SkipCertificateCheck', $true) }
+    
+    try {
+        $storageResponse = Invoke-RestMethod @apiParams
+        $storages = @($storageResponse.data | Where-Object { $_.type -eq 'santricity_lvm' })
+        
+        if ($storages.Count -eq 0) {
+            Write-SpectreHost -Message "[yellow]No 'santricity_lvm' storages found in PVE.[/]"
+            Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            return
+        }
+
+        Write-SpectreHost -Message "[cyan]Fetching SANtricity Volumes to cross-reference...[/]"
+        $sanVolumes = @(Get-SANtricityVolume -ErrorAction SilentlyContinue)
+
+        $tableData = foreach ($store in $storages) {
+            $dsName = $store.storage
+            $vgName = $store.vgname
+            
+            # Heuristic match: Volume might correspond to VG name stripped of "vg_"
+            $probableVolName = if ($vgName -match "^vg_(.*)") { $matches[1] } else { $vgName }
+            
+            $sanVol = $null
+            if ($probableVolName) {
+                $sanVol = $sanVolumes | Where-Object { $_.name -ieq $probableVolName } | Select-Object -First 1
+            }
+            if (-not $sanVol -and $vgName) {
+                $sanVol = $sanVolumes | Where-Object { $_.name -ieq $vgName } | Select-Object -First 1
+            }
+
+            $volId = if ($sanVol) { $sanVol.id } else { "[red]Not Found[/]" }
+            $volStatus = if ($sanVol) { $sanVol.status } else { "?" }
+
+            [PSCustomObject]@{
+                'PVE Datastore' = $dsName
+                'VG Name'       = $vgName
+                'SAN Vol Name'  = if ($sanVol) { $sanVol.name } else { $probableVolName }
+                'SAN Vol Status'= $volStatus
+                'SAN Vol ID'    = $volId
+                'Nodes'         = if ($store.nodes) { $store.nodes } else { 'All' }
+            }
+        }
+
+        if (Get-Command -Name Format-SpectreTable -ErrorAction SilentlyContinue) {
+            Format-SpectreTable -Data $tableData
+        } else {
+            $tableData | Format-Table -AutoSize | Out-String | Write-Host
+        }
+    } catch {
+        $err = $_.ToString().Replace('[', '(').Replace(']', ')')
+        Write-SpectreHost -Message "[red]Failed to fetch storages from PVE: $err[/]"
+    }
+
+    Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
