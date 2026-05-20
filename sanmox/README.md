@@ -79,9 +79,9 @@ Create a SANtricity volume (example: `sanmox`) in **SANtricity Volumes**:
 
 ![Create volume in SANtricity Volume menu (example: `sanmox`)](./images/step_02_create_santricity_volume.png)
 
-iSCSI may be able to discover the new target if previous volumes exists (i.e. target portal is known) with `pvesm scan iscsi <HOST[:PORT]>`. But PVE 9.1 can't scan NVMe/RoCE, so this step is left to PVE CLI rather than partially implemented.
+### Create datastore using semi-automated approach
 
-Either way, rescan storage from the CLI  using `iscsiadm` or `nvme` (client) and add a VG on the new volume. Use `lsblk` to show devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding a local LVM. Also, remember that `lvs` and similar host-level commands do not show PVE cluster-level LVM information that you get from `pvesm status`. CLI commands on the host: `pvcreate <dev-path>`, `vgcreate <vg_name> <dev-path>`.
+In the initial SANmox release rescan, login and VG create steps had to be done manually because PVE 9.1 can't scan NVMe/RoCE, so we made that a manual process rather than implement full automation for iSCSI and none for NVMe/RoCE. You can still create an present volumes that way: rescan storage from PVE nodes using `iscsiadm` or `nvme` (client) on all hosts, and create VG on the new volume on just one of them (e.g the first node). Use `lsblk` to show block devices. For easier management, just prefix the SANtricity volume name with `vg_`, so that `vg_sanmox` gets created on a volume `sanmox`, for example. Do **not** select "Add Storage" as you're not adding a local LVM. Also, remember that `lvs` and similar host-level commands do not show PVE cluster-level LVM information that you get from `pvesm status`. CLI commands on the host: `pvcreate <dev-path>`, `vgcreate <vg_name> <dev-path>`.
 
 ![Create VG (`vg_sanmox`)](./images/step_03_create_vg.png)
 
@@ -96,6 +96,22 @@ In **SANtricity-Proxmox Toolbox** (top level menu), create new PVE datastore on 
 That will setup shared storage LVM and enable other features that you can expect with `cat /etc/pve/storage.cfg`.
 
 To remove shared storage LVM, remove all VMs/CTs, and use the TUI in reverse. The VG step has to be done manually as well. You may also disconnect from iSCSI or NVMe if you wish.
+
+### Create datastore using automated approach
+
+The new, more proactive approach is to use `santricity_lvm` and execute all commands required to create and remove datastores. 
+
+```sh
+pvesm add santricity_lvm lvm_sanmox \
+  --vgname vg_sanmox \
+  --array_serial <santricity_chassis_serial> \
+  --shared 1 \
+  --saferemove 1 \
+  --content "images,rootdir" \
+  --snapshot-as-volume-chain 1
+```
+
+## Other features
 
 There are some other menu items made to make it possible to avoid using Web browser, such as high-level capacity and performance reports.
 
@@ -114,6 +130,7 @@ There are some other menu items made to make it possible to avoid using Web brow
 - **PVE** lifecycle for shared storage LVM
   - Create (requires ready-to-use VG on SANtricity volume)
   - Delete
+  - Map (requires use of `santricity_lvm` plugin on PVE nodes)
   - Report/list LVM/VG/LUNs
 
 

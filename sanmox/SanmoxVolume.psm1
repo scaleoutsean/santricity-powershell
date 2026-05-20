@@ -458,7 +458,15 @@ function New-SanmoxVolume {
             }
 
             if ($mappingSucceeded) {
-                Show-SanmoxPveCliHint -VolumeName $volName -PreferredTargetName $selectedGroup
+                $volNameSafePrompt = $volName.ToString().Replace('[', '[[').Replace(']', ']]')
+                Write-SpectreHost -Message ""
+                $setupPve = Read-SpectreSelection -Title "Proxmox UI datastore setup: Do you want to automatically scan and configure this new LUN to the PVE Datacenter right now?" -Choices @("Y. Yes, configure fully automated", "N. No, return to menu") -Color Turquoise2
+                if ($setupPve -match "^Y") {
+                    # Injecting the handoff directly into the New-SanmoxPveStorage automated wizard!
+                    New-SanmoxPveStorage -VolumeName $volName
+                } else {
+                    Write-SpectreHost -Message "[grey]Skipping automated PVE storage initialization.[/]"
+                }
             }
         }
     } catch {
