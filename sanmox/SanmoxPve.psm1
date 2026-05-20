@@ -33,9 +33,37 @@ function New-SanmoxPveStorage {
         return
     }
 
-    # Fetch PVE nodes from the Proxmox API
+    # Fetch PVE cluster status to check for offline nodes
     $skipCert = if ($null -ne $Global:sanConfig.SkipCertificateCheck) { [bool]$Global:sanConfig.SkipCertificateCheck } else { $false }
     $pveUri = $Global:sanConfig.PveApiUri.TrimEnd('/')
+    
+    $clusterParams = @{
+        Uri = "$pveUri/api2/json/cluster/status"
+        Method = "GET"
+        Headers = $Global:pveHeaders
+        SkipHeaderValidation = $true
+    }
+    if ($skipCert) { $clusterParams.Add('SkipCertificateCheck', $true) }
+    
+    try {
+        $clusterStatus = Invoke-RestMethod @clusterParams
+        $nodes = $clusterStatus.data | Where-Object { $_.type -eq 'node' }
+        $offlineNodes = $nodes | Where-Object { $_.online -eq 0 }
+        
+        if ($offlineNodes) {
+            $offlineNames = ($offlineNodes | Select-Object -ExpandProperty name) -join ', '
+            Write-SpectreHost -Message "[red]WARNING: One or more PVE nodes are currently offline: $offlineNames.[/]"
+            $proceed = Read-SpectreSelection -Title "Do you still want to proceed with Datastore creation?" -Choices @("N. No (Abort)", "Y. Yes (Proceed)")
+            if ($proceed -match '^N') {
+                Write-SpectreHost -Message "[cyan]Aborted Datastore creation.[/]"
+                return
+            }
+        }
+        
+    } catch {
+        Write-SpectreHost -Message "[yellow]Could not query cluster status to verify node health. Proceeding...[/]"
+    }
+
     $apiParams = @{
         Uri = "$pveUri/api2/json/nodes"
         Method = "GET"
