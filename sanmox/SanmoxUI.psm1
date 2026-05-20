@@ -23,5 +23,6 @@ function Read-SanmoxMultiSelection {
         }
     }
 
-    return Invoke-SpectrePromptAsync -Prompt $spectrePrompt
+    $m = Get-Module PwshSpectreConsole
+    return & $m { param($p) Invoke-SpectrePromptAsync -Prompt $p } $spectrePrompt
 }

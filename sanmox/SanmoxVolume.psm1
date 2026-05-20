@@ -661,7 +661,7 @@ function Set-SanmoxVolume {
             try { Format-SpectreTable -Data $currentTable } catch { $currentTable | Format-Table -AutoSize }
 
             Write-SpectreHost -Message "[cyan]Select the features you want ENABLED below. Unselected items will be DISABLED.[/]"
-            $selected = Read-SpectreMultiSelection -Title "Toggle for $volName" -Choices $featureChoices
+            $selected = Read-SanmoxMultiSelection -Message "Toggle for $volName" -Choices $featureChoices -PreSelected $defaults
             if ($null -eq $selected) {
                 Write-SpectreHost -Message "[cyan]Volume settings update cancelled.[/]"
                 return
