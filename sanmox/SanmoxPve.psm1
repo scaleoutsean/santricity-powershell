@@ -180,16 +180,30 @@ function New-SanmoxPveStorage {
         Write-SpectreHost -Message "[cyan]Gathering NVMe interface data from SANtricity...[/]"
         try {
             $interfaces = Invoke-SANtricityRequest -Method GET -Path "/interfaces?channelType=hostside"
-            $nvmeInterfaces = $interfaces | Where-Object { 
-                ($_.interfaceType -match "nvme") -and 
-                ($_.linkState -eq "up") -and 
-                (-not [string]::IsNullOrWhiteSpace($_.ipv4Address)) -and 
-                ($_.ipv4Address -ne '0.0.0.0')
+            
+            $nvmePortals = @()
+            foreach ($hw in @($interfaces)) {
+                $ethernetData = if ($hw.ioInterfaceTypeData.interfaceType -eq 'ethernet') { $hw.ioInterfaceTypeData.ethernet.interfaceData.ethernetData } else { $null }
+                if ($null -eq $ethernetData -or $ethernetData.linkStatus -ne 'up') { continue }
+                
+                # Dig into the port's protocol features to find NVMe over RoCE v2 IPs
+                $protos = if ($hw.commandProtocolPropertiesList.commandProtocolProperties) { @($hw.commandProtocolPropertiesList.commandProtocolProperties) } else { @() }
+                foreach ($cp in $protos) {
+                    if ($cp.commandProtocol -eq 'nvme' -and $cp.nvmeProperties.commandSet -eq 'nvmeof') {
+                        $roce = $cp.nvmeProperties.nvmeofProperties.roceV2Properties
+                        if ($roce -and $roce.ipv4Enabled) {
+                            $ipv4 = $roce.ipv4Data.ipv4Address
+                            if (-not [string]::IsNullOrWhiteSpace($ipv4) -and $ipv4 -ne '0.0.0.0') {
+                                $nvmePortals += $ipv4
+                            }
+                        }
+                    }
+                }
             }
-            $nvmePortals = $nvmeInterfaces | Select-Object -ExpandProperty ipv4Address | Select-Object -Unique
+            $nvmePortals = $nvmePortals | Sort-Object -Unique
 
             if (-not $nvmePortals) {
-                Write-SpectreHost -Message "[red]No active NVMe IPv4 host portals found on the SANtricity array.[/]"
+                Write-SpectreHost -Message "[red]Warning: No active NVMe over RoCE (IPv4) host portals found (Link Status: Up). Cannot automate nvme connect-all targeting.[/]"
                 return
             }
 
