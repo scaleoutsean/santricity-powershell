@@ -55,7 +55,10 @@ function New-SANtricityVolumeMapping {
         [string]$HostGroupName,
 
         [Parameter(Mandatory=$false)]
-        [int]$Lun
+        [int]$Lun,
+
+        [Parameter(Mandatory=$false)]
+        [switch]$Das
     )
 
     process {
@@ -96,10 +99,13 @@ function New-SANtricityVolumeMapping {
              
              # Check for Cluster Association
              $zeroRef = "0" * 40
-             if ($matchedH.clusterRef -and $matchedH.clusterRef -ne $zeroRef) {
+             if ($matchedH.clusterRef -and $matchedH.clusterRef -ne $zeroRef -and -not $Das.IsPresent) {
                  Write-Warning "Host '$HostName' is part of a cluster/host-group ($($matchedH.clusterRef)). Mapping to the cluster instead."
                  $TargetId = $matchedH.clusterRef
              } else {
+                 if ($Das.IsPresent -and $matchedH.clusterRef -ne $zeroRef) {
+                     Write-Verbose "Das mode requested: Bypassing cluster association. Mapping directly to host '$HostName' instead of its cluster."
+                 }
                  $TargetId = $matchedH.id
              }
         } elseif ($PSBoundParameters.ContainsKey('HostGroupName')) {

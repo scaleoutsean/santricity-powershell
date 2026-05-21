@@ -421,6 +421,35 @@ function New-SanmoxVolume {
         }
         if ($raidLevel) { $splat.Add('RaidLevel', $raidLevel) }
         
+        $metaTags = @{}
+        if ($Global:pveConnected) {
+            $metaTags['pve_storage_type'] = 'santricity_lvm'
+            $metaTags['fsType'] = 'LVM'
+            try {
+                $skipCert = if ($null -ne $Global:sanConfig.SkipCertificateCheck) { [bool]$Global:sanConfig.SkipCertificateCheck } else { $false }
+                $pveUri = $Global:sanConfig.PveApiUri.TrimEnd('/')
+                $clusterParams = @{
+                    Uri = "$pveUri/api2/json/cluster/status"
+                    Method = "GET"
+                    Headers = $Global:pveHeaders
+                    SkipHeaderValidation = $true
+                }
+                if ($skipCert) { $clusterParams.Add('SkipCertificateCheck', $true) }
+                $clusterStatus = Invoke-RestMethod @clusterParams
+                $pveCluster = $clusterStatus.data | Where-Object { $_.type -eq 'cluster' } | Select-Object -First 1
+                if ($pveCluster.name) {
+                    $metaTags['pve_cluster_name'] = $pveCluster.name
+                }
+            } catch {}
+        }
+        if ($metaTags.Keys.Count -gt 0) {
+            $kvList = @()
+            foreach ($key in $metaTags.Keys) {
+                $kvList += @{ key = [string]$key; value = [string]($metaTags[$key]) }
+            }
+            $splat.Add('MetaTags', $kvList)
+        }
+        
         $newVol = New-SANtricityVolume @splat
         Write-SpectreHost -Message "[green]Successfully created volume '$volNameSafe'![/]"
         
@@ -483,15 +512,13 @@ function Remove-SanmoxVolume {
     Write-SpectreHost -Message "[red]========================= WARNING =========================[/]"
     Write-SpectreHost -Message "[yellow]This action WILL DESTROY the LUN on the SANtricity array.[/]"
     Write-SpectreHost -Message "[yellow]If Proxmox is still using this LUN as an LVM Datastore, you[/]"
-    Write-SpectreHost -Message "[yellow]MUST first:[/]"
-    Write-SpectreHost -Message "[white]  1. Remove the LVM Datastore from Proxmox GUI / CLI[/]"
-    Write-SpectreHost -Message "[white]  2. Wipe the VG from the PVE hosts (e.g., via `vgremove`)[/]"
+    Write-SpectreHost -Message "[yellow]MUST ensure the datastore is EMPTIED (no VMs/CTs) first.[/]"
     Write-SpectreHost -Message "[red]===========================================================[/]"
     Write-SpectreHost -Message ""
     
-    $proceed = Read-SpectreSelection -Title "WARNING: Have you fully removed the LVM and VG from Proxmox for this volume?" -Choices @(
+    $proceed = Read-SpectreSelection -Title "WARNING: Have you ensured the PVE Datastore is completely empty (used=0 bytes)?" -Choices @(
         "N. No, cancel this operation so I can clean up Proxmox first",
-        "Y. Yes, Proxmox is clean (or this volume is completely unused/unmapped)"
+        "Y. Yes, Proxmox is clean and empty (or this volume is completely unused/unmapped)"
     )
 
     if ($proceed -notmatch '^Y') {
@@ -500,9 +527,61 @@ function Remove-SanmoxVolume {
     }
 
     $volName = Read-SpectreText -Message "Enter the EXACT name of the SANtricity volume to destroy"
+
+    # Attempt to cleanly and automatically remove from PVE if datastore exists and is empty
+    $foundPveStorage = $false
+    if ($Global:pveConnected -and -not [string]::IsNullOrWhiteSpace($volName)) {
+        try {
+            $skipCert = if ($null -ne $Global:sanConfig.SkipCertificateCheck) { [bool]$Global:sanConfig.SkipCertificateCheck } else { $false }
+            $pveUri = $Global:sanConfig.PveApiUri.TrimEnd('/')
+            $apiParams = @{
+                Uri = "$pveUri/api2/json/cluster/resources"
+                Method = "GET"
+                Headers = $Global:pveHeaders
+                SkipHeaderValidation = $true
+            }
+            if ($skipCert) { $apiParams.Add('SkipCertificateCheck', $true) }
+            
+            $resources = Invoke-RestMethod @apiParams
+            $storageContext = $resources.data | Where-Object { $_.type -eq 'storage' -and $_.storage -eq $volName } | Select-Object -First 1
+            
+            if ($storageContext) {
+                # Found matching datastore! Check if it's empty (disk property should be 0 or small for just LVM metadata, but PVE reports 0 for completely empty)
+                if ($storageContext.disk -gt 0) {
+                    Write-SpectreHost -Message "[red]ERROR: Proxmox Datastore '$volName' is not empty (Used: $([math]::Round($storageContext.disk / 1MB, 2)) MB).[/]"
+                    Write-SpectreHost -Message "[red]Please migrate or remove all VMs/CTs from this datastore before deleting the volume.[/]"
+                    return
+                }
+
+                $foundPveStorage = $true
+                Write-SpectreHost -Message "[cyan]Validated Proxmox Datastore '$volName' is completely empty.[/]"
+            }
+        } catch {
+            Write-SpectreHost -Message "[yellow]Warning: Could not query PVE cluster resources for $volName : $_[/]"
+        }
+    }
+
     $confirm = Read-SpectreSelection -Title "DESTRUCTIVE ACTION: Are you absolutely sure you want to delete '$volName'?" -Choices @("N. No, cancel", "Y. Yes, destroy the volume")
     
     if ($confirm -match '^Y') {
+        if ($foundPveStorage) {
+            # Let's automatically remove the datastore from PVE
+            Write-SpectreHost -Message "[cyan]Automatically removing Datastore '$volName' from Proxmox VE...[/]"
+            try {
+                $delParams = @{
+                    Uri = "$pveUri/api2/json/storage/$volName"
+                    Method = "DELETE"
+                    Headers = $Global:pveHeaders
+                    SkipHeaderValidation = $true
+                }
+                if ($skipCert) { $delParams.Add('SkipCertificateCheck', $true) }
+                Invoke-RestMethod @delParams | Out-Null
+                Write-SpectreHost -Message "[green]Successfully removed Datastore from Proxmox VE.[/]"
+            } catch {
+                Write-SpectreHost -Message "[yellow]Warning: Failed to automatically remove PVE Datastore: $_[/]"
+            }
+        }
+
         try {
             Remove-SANtricityVolume -VolumeName $volName -Force
             $volNameSafe = $volName.ToString().Replace('[', '[[').Replace(']', ']]')

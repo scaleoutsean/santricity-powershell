@@ -8,14 +8,51 @@ function Invoke-SanmoxPveSsh {
         [string]$Command
     )
     
-    $sshCmd = "ssh -o StrictHostKeyChecking=no -o BatchMode=yes root@$NodeAddress '$Command'"
+    $sshUser = if (-not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveSshUser)) { $Global:sanConfig.PveSshUser } else { "root" }
+    
+    # Prompt for SSH Key if not in config
+    if ($null -eq $Global:sanConfig.PveSshKey) {
+        $sshDir = Join-Path $HOME ".ssh"
+        $keyChoices = @("None (rely on ssh-agent or defaults)")
+        if (Test-Path $sshDir) {
+            $files = Get-ChildItem -Path $sshDir -File | Where-Object { 
+                $_.Extension -ne ".pub" -and $_.Name -notmatch "(?i)known_hosts|config|authorized_keys|^control-"
+            }
+            foreach ($f in $files) { $keyChoices += $f.FullName }
+        }
+        $keyChoices += "Enter custom path..."
+        
+        Write-SpectreHost -Message ""
+        Write-SpectreHost -Message "[yellow]No SSH key defined in config for PVE operations.[/]"
+        $selectedKey = Read-SpectreSelection -Title "Select SSH private key for connecting to PVE ($sshUser)" -Choices $keyChoices
+        
+        if ($selectedKey -match "Enter custom path") {
+            $selectedKey = Read-SpectreText -Message "Full path to SSH private key"
+        }
+        
+        if ($selectedKey -match "^None") {
+            $Global:sanConfig | Add-Member -MemberType NoteProperty -Name "PveSshKey" -Value ""
+        } else {
+            $Global:sanConfig | Add-Member -MemberType NoteProperty -Name "PveSshKey" -Value $selectedKey
+        }
+    }
+    
+    $sshCmd = "ssh -o StrictHostKeyChecking=no -o BatchMode=yes "
+    if (-not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveSshKey)) {
+        $sshKeyPath = $Global:sanConfig.PveSshKey
+        $sshCmd += "-i `"$sshKeyPath`" "
+    }
+    
+    $sshCmd += "$sshUser@$NodeAddress '$Command'"
+    
     Write-Verbose "Executing SSH on $($NodeAddress): $Command"
     
     try {
-        $result = Invoke-Expression $sshCmd
+        # Redirect stderr to stdout so we capture it instead of letting it bleed to the console unstructured
+        $result = Invoke-Expression "$sshCmd 2>&1"
         return $result
     } catch {
-        Write-Warning "SSH execution failed on $NodeAddress : $_"
+        Write-SpectreHost -Message "[yellow]Warning: SSH execution failed on $NodeAddress : $_[/]"
         throw
     }
 }
@@ -453,7 +490,7 @@ function Get-SanmoxPveSantricityLvmDatastores {
     [CmdletBinding()]
     param()
 
-    Write-SpectreRule -Title "SANtricity LVM Datastores (santricity_lvm) :eyes: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Cyan
+    Write-SpectreRule -Title "SANtricity LVM Datastores (santricity_lvm) :eyes: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center
 
     if (-not $Global:pveConnected) {
         Write-SpectreHost -Message "[red]Proxmox VE is not connected. Connect first or exit restricted mode.[/]"
@@ -501,7 +538,7 @@ function Get-SanmoxPveSantricityLvmDatastores {
                 $sanVol = $sanVolumes | Where-Object { $_.name -ieq $vgName } | Select-Object -First 1
             }
 
-            $volId = if ($sanVol) { $sanVol.id } else { "[red]Not Found[/]" }
+            $volId = if ($sanVol) { $sanVol.id } else { "Not Found" }
             $volStatus = if ($sanVol) { $sanVol.status } else { "?" }
 
             [PSCustomObject]@{

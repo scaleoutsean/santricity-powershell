@@ -850,7 +850,7 @@ function Get-SanmoxPveHostDiskView {
     [CmdletBinding()]
     param()
 
-    Write-SpectreRule -Title "PVE Host Disk View (E-Series) :floppy_disk: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Cyan
+    Write-SpectreRule -Title "PVE Host Disk View (E-Series) :floppy_disk: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center
 
     if (-not $Global:pveConnected) {
         Write-SpectreHost -Message "[red]Proxmox VE is not connected. Cannot query PVE node disk list.[/]"

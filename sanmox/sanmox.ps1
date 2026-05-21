@@ -263,10 +263,9 @@ do {
         "1. Proxmox-SANtricity toolbox :toolbox:",
         "2. SANtricity Volumes :floppy_disk:",
         "3. SANtricity Host Groups :shield:",
-        "4. SANtricity Storage Pools (DDP) :up_down_arrow:",
-        "5. Volume Utilization & Target Settings :eyes:",
-        "6. Performance tools :bar_chart:",
-        "7. First-time setup / Config :gear:",
+        "4. Capacity & Target Settings :detective:",
+        "5. Performance tools :bar_chart:",
+        "6. First-time setup / Config :gear:",
         "Q. Quit :stop_sign:"
     )
     $MainMenu = Read-SpectreSelection -Title "Select a [Blue]task[/] using :up_down_arrow: or search" -Choices $mainChoices -Color Turquoise2 -PageSize 10 -EnableSearch
@@ -315,7 +314,7 @@ do {
                 $volumeChoices = @(
                     "1. [Blue]View[/] SANtricity volumes in pool [green]$poolNameSafe[/] :eyes:",
                     "2. [Green]Create[/] SANtricity volume (auto-map to pool) :new_button:",
-                    "3. [Purple_2]Remove[/] SANtricity volume (WARNING: Must be unmapped from PVE first) :litter_in_bin_sign:",
+                    "3. [Purple_2]Remove[/] SANtricity volume (WARNING: Must be emptied first) :litter_in_bin_sign:",
                     "4. [Green]Edit[/] SANtricity volume properties (resize :red_triangle_pointed_up: / cache / scan)",
                     "B. Back to [Blue]main menu[/] :house:"
                 )
@@ -331,9 +330,26 @@ do {
             } until ($sub.Substring(0,1).ToUpper() -eq 'B')
         }
         '3' { Get-SanmoxHostGroup }
-        '4' { Get-SanmoxStoragePoolOverview }
-        '5' { Get-SanmoxTargetOverview }
-        '6' {
+        '4' {
+            # --- Capacity & Target Settings Submenu ---
+            $subCap = ''
+            do {
+                Write-SpectreRule -Title "Capacity & Target Settings :detective: | $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Alignment Center -Color Yellow
+                $capChoices = @(
+                    "1. SANtricity Storage Pools (DDP) :up_down_arrow:",
+                    "2. Volume Utilization & Target Settings :eyes:",
+                    "B. Back to [Blue]main menu[/] :house:"
+                )
+                $subCap = Read-SpectreSelection -Title "Pick a [Blue]reporting tool[/]" -Choices $capChoices -Color Turquoise2 -PageSize 10 -EnableSearch
+
+                switch ($subCap.Substring(0, 1).ToUpper()) {
+                    '1' { Get-SanmoxStoragePoolOverview }
+                    '2' { Get-SanmoxTargetOverview }
+                    'B' { break }
+                }
+            } until ($subCap.Substring(0,1).ToUpper() -eq 'B')
+        }
+        '5' {
             # --- Performance Submenu ---
             $sub = ''
             do {
@@ -352,7 +368,7 @@ do {
                 }
             } until ($sub.Substring(0,1).ToUpper() -eq 'B')
         }
-        '7' { Write-SpectreHost -Message "TODO: Settings / Configuration Module" }
+        '6' { Write-SpectreHost -Message "TODO: Settings / Configuration Module" }
         'Q' { Write-SpectreHost -Message "Exiting Sanmox. Have a great day!" }
     }
 } until ($MainMenu -eq 'Q')
