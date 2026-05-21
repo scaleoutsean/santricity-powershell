@@ -289,7 +289,7 @@ do {
                     "3. [Blue]View[/] Configured Host Group/Host Disk Identifiers & Paths :eyes:",
                     "4. [Blue]View[/] E-Series Disks from PVE Host Perspective :desktop_computer:",
                     "5. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
-                    "6. [Purple_2]Remove[/] [orange3]PVE[/] datastore (WARNING: Datastore must be empty) :litter_in_bin_sign:",
+                    "6. [Purple_2]Remove[/] [orange3]PVE[/] datastore (Optionally deletes SAN volume) :litter_in_bin_sign:",
                     "B. Back to [Blue]main menu[/] :house:"
                 )
                 $sub = Read-SpectreSelection -Title "Pick a [Blue]tool[/]" -Choices $toolboxChoices -Color Turquoise2 -PageSize 10 -EnableSearch

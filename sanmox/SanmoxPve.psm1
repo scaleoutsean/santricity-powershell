@@ -30,26 +30,35 @@ function Invoke-SanmoxPveSsh {
             $selectedKey = Read-SpectreText -Message "Full path to SSH private key"
         }
         
-        if ($selectedKey -match "^None") {
-            $Global:sanConfig | Add-Member -MemberType NoteProperty -Name "PveSshKey" -Value ""
+        $targetKeyValue = if ($selectedKey -match "^None") { "" } else { $selectedKey }
+        if ($Global:sanConfig -is [hashtable]) {
+            $Global:sanConfig['PveSshKey'] = $targetKeyValue
         } else {
-            $Global:sanConfig | Add-Member -MemberType NoteProperty -Name "PveSshKey" -Value $selectedKey
+            if ($Global:sanConfig.psobject.properties.match('PveSshKey').Count -eq 0) {
+                $Global:sanConfig | Add-Member -MemberType NoteProperty -Name "PveSshKey" -Value $targetKeyValue
+            } else {
+                $Global:sanConfig.PveSshKey = $targetKeyValue
+            }
         }
     }
     
-    $sshCmd = "ssh -o StrictHostKeyChecking=no -o BatchMode=yes "
+    $sshArgs = @("-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes")
+    
     if (-not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveSshKey)) {
         $sshKeyPath = $Global:sanConfig.PveSshKey
-        $sshCmd += "-i `"$sshKeyPath`" "
+        # Add the explicit path to the args
+        $sshArgs += "-i"
+        $sshArgs += "$sshKeyPath"
     }
     
-    $sshCmd += "$sshUser@$NodeAddress '$Command'"
+    $sshArgs += "$sshUser@$NodeAddress"
+    $sshArgs += "$Command"
     
-    Write-Verbose "Executing SSH on $($NodeAddress): $Command"
+    Write-Verbose "Executing SSH on $($NodeAddress) with args: $($sshArgs -join ' ')"
     
     try {
-        # Redirect stderr to stdout so we capture it instead of letting it bleed to the console unstructured
-        $result = Invoke-Expression "$sshCmd 2>&1"
+        # Using the call operator & instead of Invoke-Expression to prevent escaping/hanging bugs
+        $result = & ssh @sshArgs 2>&1
         return $result
     } catch {
         Write-SpectreHost -Message "[yellow]Warning: SSH execution failed on $NodeAddress : $_[/]"
@@ -376,10 +385,11 @@ function Remove-SanmoxPveStorage {
     
     try {
         $storageResponse = Invoke-RestMethod @apiParams
-        $storages = $storageResponse.data | Where-Object { $_.type -in @('iscsi', 'lvm', 'lvmthin') } | Select-Object -ExpandProperty storage
+        # Constrain this ONLY to santricity_lvm so we don't accidentally display/offer to delete local cluster drives like local-lvm
+        $storages = $storageResponse.data | Where-Object { $_.type -eq 'santricity_lvm' } | Select-Object -ExpandProperty storage
         
         if ($null -eq $storages -or $storages.Count -eq 0) {
-            Write-SpectreHost -Message "[yellow]No iSCSI or LVM storages found on PVE.[/]"
+            Write-SpectreHost -Message "[yellow]No 'santricity_lvm' storages found on PVE.[/]"
             return
         }
         
@@ -442,6 +452,26 @@ function Remove-SanmoxPveStorage {
             
             Invoke-RestMethod @deleteParams | Out-Null
             Write-SpectreHost -Message "[green]Successfully removed Datastore '$selectedStorage' from PVE![/]"
+            
+            $sanVolName = if ($vgName -match "^vg_(.*)") { $matches[1] } else { $vgName }
+            $delSanVol = Read-SpectreSelection -Title "Datastore removed. Do you also want to permanently delete the underlying SANtricity Volume '$sanVolName'?" -Choices @("N. No, keep it", "Y. Yes, destroy the volume")
+            
+            if ($delSanVol -match '^Y') {
+                try {
+                    # If this cmdlet exists and works, it deletes the volume
+                    if (Get-Command -Name Remove-SANtricityVolume -ErrorAction SilentlyContinue) {
+                        Remove-SANtricityVolume -VolumeName $sanVolName -Force -ErrorAction Stop
+                        Write-SpectreHost -Message "[green]Successfully destroyed SANtricity volume '$sanVolName'![/]"
+                    } else {
+                        Write-SpectreHost -Message "[red]Remove-SANtricityVolume cmdlet not available![/]"
+                    }
+                } catch {
+                    $err = $_.ToString().Replace('[', '(').Replace(']', ')')
+                    Write-SpectreHost -Message "[red]Failed to remove SANtricity volume: $err[/]"
+                }
+            } else {
+                 Write-SpectreHost -Message "[cyan]SANtricity volume retained.[/]"
+            }
         } else {
             Write-SpectreHost -Message "[cyan]Deletion cancelled.[/]"
         }

@@ -392,6 +392,14 @@ function New-SanmoxVolume {
     $volDisplayUnit = $parsedCreateSize.DisplayUnit
 
     $volNameSafe = $volName.ToString().Replace('[', '[[').Replace(']', ']]')
+    
+    # Pre-check for duplicate volume name to prevent vague 422 API errors
+    $existingVols = Get-SANtricityVolume -ErrorAction SilentlyContinue
+    if ($existingVols | Where-Object { $_.name -eq $volName }) {
+        Write-SpectreHost -Message "[red]Error: A volume with the name '$volNameSafe' already exists on the array![/]"
+        return
+    }
+
     $poolNameConfig = $Global:sanConfig.SanPoolName
     $poolName = $poolNameConfig.ToString().Replace('[', '[[').Replace(']', ']]')
 
