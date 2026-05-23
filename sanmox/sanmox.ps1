@@ -110,6 +110,9 @@ function Initialize-Sanconfig {
     $skipCertStr = Read-Host "Skip Certificate Verification? (Y/n) [Y]"
     $skipCert = if ($skipCertStr -match '^[Nn]') { $false } else { $true }
 
+    $deployPluginStr = Read-Host "Do you want to deploy santricity_lvm to PVE nodes? (Y/n) [Y]"
+    $deployPlugin = if ($deployPluginStr -match '^[Nn]') { $false } else { $true }
+
     $defaultConfig = @{
         SanApiUri = $sanUri
         SanUser = $sanUser
@@ -118,6 +121,7 @@ function Initialize-Sanconfig {
         PveApiUri = $pveUri
         PveUser = $pveUser
         SkipCertificateCheck = $skipCert
+        InstallPvePlugin = $deployPlugin
     }
     
     $Global:sanConfig = $defaultConfig
@@ -248,6 +252,16 @@ Connect-SanmoxEnvironment
 if (-not (Test-SanmoxHostObjectUniqueness)) {
     Write-SpectreHost -Message "[red]Startup aborted due to Host/Host Group naming collision. Please rename the conflicting SANtricity objects and retry.[/]"
     exit 1
+}
+
+if ($Global:sanConfig.InstallPvePlugin -eq $true) {
+    Deploy-SanmoxPvePlugin
+    if ($Global:sanConfig -is [hashtable]) {
+        $Global:sanConfig.Remove('InstallPvePlugin')
+    } else {
+        $Global:sanConfig.PSObject.Properties.Remove('InstallPvePlugin')
+    }
+    $Global:sanConfig | ConvertTo-Json -Depth 5 | Set-Content -Path $configFile
 }
 
 $configProfileName = [System.IO.Path]::GetFileName($configFile)

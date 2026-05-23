@@ -86,7 +86,7 @@ Some cmdlets do not behave exactly the same as the SANtricity API - we tend to e
 
 For example, SANtricity and SMcli [delete member hosts](https://docs.netapp.com/us-en/e-series-cli/commands-a-z/delete-hostgroup.html#context) when a group is deleted. We aim to prevent such disorderly entity removal by returning an error, but the user can override such safeguards with `-Force`. See [CMDLETS](./CMDLETS.md) and online help for more.
 
-Another noteworthy difference is **volume mapping**. When mapping to a host that belongs to a host group, we map the volume to the host group and show a warning. The reason is a volume can't be mapped to only one host from a cluster.
+Another noteworthy difference is **volume mapping**. When mapping to a host that belongs to a host group, we map the volume to the host group and show a warning. This was done as (as I remember) it wasn't possible to present a volume to just one member of the group, but it apparently works now. To override that behavior and map a volume to individual host group member, use `-Das`.
 
 ## Acknowledgements
 

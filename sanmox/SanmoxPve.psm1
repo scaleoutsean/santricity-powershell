@@ -471,6 +471,12 @@ function Remove-SanmoxPveStorage {
                 }
             } else {
                  Write-SpectreHost -Message "[cyan]SANtricity volume retained.[/]"
+                 try {
+                     Set-SANtricityVolume -VolumeName $sanVolName -ExtraProperties @{ metaTags = @() } | Out-Null
+                     Write-SpectreHost -Message "[cyan]Cleared PVE metadata tags from SANtricity volume '$sanVolName'.[/]"
+                 } catch {
+                     Write-SpectreHost -Message "[yellow]Warning: Could not clear metadata tags from the volume. It may have already been renamed or removed.[/]"
+                 }
             }
         } else {
             Write-SpectreHost -Message "[cyan]Deletion cancelled.[/]"
@@ -593,4 +599,88 @@ function Get-SanmoxPveSantricityLvmDatastores {
 
     Write-SpectreHost -Message "[grey]Press Enter to continue...[/]"
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Deploy-SanmoxPvePlugin {
+    [CmdletBinding()]
+    param()
+
+    if (-not $Global:pveConnected) {
+        Write-SpectreHost -Message "[red]Proxmox VE is not connected. Cannot deploy plugin.[/]"
+        return
+    }
+
+    $pluginPath = Join-Path -Path $PSScriptRoot -ChildPath "proxmox_plugin/SANtricityPlugin.pm"
+    if (-not (Test-Path -Path $pluginPath)) {
+        Write-SpectreHost -Message "[red]Plugin file not found at $pluginPath[/]"
+        return
+    }
+
+    # Fetch PVE nodes
+    $skipCert = if ($null -ne $Global:sanConfig.SkipCertificateCheck) { [bool]$Global:sanConfig.SkipCertificateCheck } else { $false }
+    $pveUri = $Global:sanConfig.PveApiUri.TrimEnd('/')
+    $apiParams = @{
+        Uri = "$pveUri/api2/json/nodes"
+        Method = "GET"
+        Headers = $Global:pveHeaders
+        SkipHeaderValidation = $true
+    }
+    if ($skipCert) { $apiParams.Add('SkipCertificateCheck', $true) }
+    
+    try {
+        $nodesResponse = Invoke-RestMethod @apiParams
+        $pveNodes = $nodesResponse.data.node
+    } catch {
+        Write-SpectreHost -Message "[red]Failed to retrieve PVE nodes: $_[/]"
+        return
+    }
+
+    $sshUser = if (-not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveSshUser)) { $Global:sanConfig.PveSshUser } else { "root" }
+    
+    if ($null -eq $Global:sanConfig.PveSshKey) {
+        # Rely on Invoke-SanmoxPveSsh to prompt for it by issuing a quick dummy check
+        try { Invoke-SanmoxPveSsh -NodeAddress $pveNodes[0] -Command "echo 'checking config'" | Out-Null } catch {}
+    }
+
+    Write-SpectreHost -Message ""
+    Write-SpectreHost -Message "[cyan]Deploying PVE santricity_lvm plugin to cluster nodes...[/]"
+
+    foreach ($node in $pveNodes) {
+        Write-SpectreHost -Message "  -> Deploying to $node..."
+        
+        # 1. Create target directory
+        try {
+            Invoke-SanmoxPveSsh -NodeAddress $node -Command "mkdir -p /usr/share/perl5/PVE/Storage/Custom/" | Out-Null
+        } catch {
+            Write-SpectreHost -Message "[yellow]Warning: SSH failed to create directory on $node - $_[/]"
+            continue
+        }
+
+        # 2. SCP the file
+        $scpArgs = @("-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes")
+        if (-not [string]::IsNullOrWhiteSpace($Global:sanConfig.PveSshKey)) {
+            $scpArgs += "-i"
+            $scpArgs += $Global:sanConfig.PveSshKey
+        }
+        $scpArgs += "$pluginPath"
+        $scpArgs += "$sshUser@${node}:/usr/share/perl5/PVE/Storage/Custom/SANtricityPlugin.pm"
+        
+        try {
+            $null = & scp @scpArgs 2>&1
+        } catch {
+            Write-SpectreHost -Message "[yellow]Warning: scp failed on $node - $_[/]"
+            continue
+        }
+
+        # 3. Set permissions and restart daemon via SSH
+        $chmodCmd = "chmod +x /usr/share/perl5/PVE/Storage/Custom/SANtricityPlugin.pm && systemctl restart pvedaemon pvestatd"
+        try {
+            Invoke-SanmoxPveSsh -NodeAddress $node -Command $chmodCmd | Out-Null
+            Write-SpectreHost -Message "[green]     Successfully deployed and restarted services on $node.[/]"
+        } catch {
+            Write-SpectreHost -Message "[yellow]Warning: SSH config step failed on $node - $_[/]"
+        }
+    }
+
+    Write-SpectreHost -Message "[green]Plugin deployment complete![/]"
 }

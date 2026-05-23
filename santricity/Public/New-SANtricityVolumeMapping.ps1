@@ -23,6 +23,9 @@ The name of the Host Group to map to.
 .PARAMETER Lun
 Optional LUN number. If invalid or not specified, the array assigns one automatically.
 
+.PARAMETER Das
+If specified, bypasses cluster association and maps directly to the specified host instead of its cluster/host group.
+
 .EXAMPLE
 New-SANtricityVolumeMapping -VolumeName "Vol1" -HostName "ESX01"
 #>
