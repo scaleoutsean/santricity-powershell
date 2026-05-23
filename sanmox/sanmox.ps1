@@ -302,8 +302,7 @@ do {
                     "2. [Blue]View[/] SANtricity-backed PVE Datastores and Mappings :eyes:",
                     "3. [Blue]View[/] Configured Host Group/Host Disk Identifiers & Paths :eyes:",
                     "4. [Blue]View[/] E-Series Disks from PVE Host Perspective :desktop_computer:",
-                    "5. [Green]Create[/] new [orange3]PVE[/] datastore (iSCSI or NVMe-backed LVM) :new_button:",
-                    "6. [Purple_2]Remove[/] [orange3]PVE[/] datastore (Optionally deletes SAN volume) :litter_in_bin_sign:",
+                    "5. [Purple_2]Remove[/] [orange3]PVE[/] datastore (Optionally deletes SAN volume) :litter_in_bin_sign:",
                     "B. Back to [Blue]main menu[/] :house:"
                 )
                 $sub = Read-SpectreSelection -Title "Pick a [Blue]tool[/]" -Choices $toolboxChoices -Color Turquoise2 -PageSize 10 -EnableSearch
@@ -313,8 +312,7 @@ do {
                     '2' { Get-SanmoxStorageMap }
                     '3' { Get-SanmoxPveDevicePaths }
                     '4' { Get-SanmoxPveHostDiskView }
-                    '5' { New-SanmoxPveStorage }
-                    '6' { Remove-SanmoxPveStorage }
+                    '5' { Remove-SanmoxPveStorage }
                     'B' { break }
                 }
             } until ($sub.Substring(0,1).ToUpper() -eq 'B')
