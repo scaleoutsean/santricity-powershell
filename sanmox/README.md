@@ -100,7 +100,7 @@ Create a SANtricity volume (example: `sanmox`) in **SANtricity Volumes**:
 
 SANmox provides an end-to-end automated workflow from the TUI (from Namespace/LUN creation, to shared LVM creation using the `santricity_lvm` storage plug-in via SSH automation).
 
-How to use `santricity_lvm` and to create and remove datastore:
+How SANmox uses `santricity_lvm` to create and remove datastores:
 - Create a volume, map to PVE host(s), e.g. `snmx04`
 - Create VG on one of the hosts, e.g. `vg_snmx04`
 - Use `pvesm` to add 
@@ -115,7 +115,13 @@ pvesm add santricity_lvm lvm_smx04 \
   --snapshot-as-volume-chain 1
 ```
 
+You may perform this workflow by yourself, and use SANmox for less sensitive operations that don't touch PVE datastores, LVMs or VGs.
+
+If you use SANmox for end-to-end automation of PVE 9.1, these commands are executed over SSH (not PVE API), because that's the only way to automate both NVMe/RoCE and iSCSI. Once PVE API starts supporting NVMe/RoCE, we'll be able to switch to using the API. For now, you need tell SANmox what SSH key to use (passwordless or ssh-agent cached password) to get root access to PVE hosts. If you prefer to not let SANmox access PVE hosts, run the PVE side of provisioning manually (rescan, login, create persistent connection (NVMe), create VG, create LVM datastore).
+
 ## TUI Menus
+
+They currently look roughly like this.
 
 ### Top level
 
